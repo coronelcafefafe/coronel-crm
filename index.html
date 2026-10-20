@@ -830,7 +830,7 @@ function openForm(col,id,preset){
  if(ex&&(col==='encomendas'||col==='propostas'))body+=`<div style="margin-top:16px">${aiBox(col,ex)}</div>`;
  const t=ex?(col==='entidades'?ex.nome:'Editar '+NOMES[col][0]):NOMES[col][1];
  openSheet(`<div class="sh"><h2>${esc(t)}</h2><button class="ib" data-act="close" aria-label="Fechar">${ic('x')}</button></div><div class="sb">${body}</div>
- <div class="sf">${ex&&!ro?`<button class="btn dng" data-act="del" type="button">Apagar</button>`:''}${ex&&col==='propostas'&&!ro?`<button class="btn" data-act="prop2enc" type="button">Converter em encomenda</button>`:''}${ex&&(col==='encomendas'||col==='propostas')?`<button class="btn" data-act="copydoc" type="button">${ic('copy',16)}Copiar texto</button>`:''}${ex&&col==='encomendas'&&!ro&&CFG.emailEncomendas?`<button class="btn" data-act="encEmail" type="button">Enviar por email</button>`:''}<span class="grow"></span><button class="btn" data-act="close" type="button">Cancelar</button>${ro?'':`<button class="btn pri" data-act="saveform" type="button">Guardar</button>`}</div>`);
+ <div class="sf">${ex&&!ro?`<button class="btn dng" data-act="del" type="button">Apagar</button>`:''}${ex&&col==='propostas'&&!ro?`<button class="btn" data-act="prop2enc" type="button">Converter em encomenda</button>`:''}${ex&&(col==='encomendas'||col==='propostas')?`<button class="btn" data-act="copydoc" type="button">${ic('copy',16)}Copiar texto</button>`:''}${ex&&col==='encomendas'&&!CFG.emailEncomendas?`<a class="btn" data-act="mailgo" href="${esc(encMail(ex).href)}">${ic("mail",16)}Enviar email</a>`:''}${ex&&col==='encomendas'&&!ro&&CFG.emailEncomendas?`<button class="btn" data-act="encEmail" type="button">Enviar por email</button>`:''}<span class="grow"></span><button class="btn" data-act="close" type="button">Cancelar</button>${ro?'':`<button class="btn pri" data-act="saveform" type="button">Guardar</button>`}</div>`);
  setTimeout(()=>{const f=$('#sheetc input:not([type=hidden]),#sheetc select');if(f&&!ex&&innerWidth>760)f.focus()},50);
 }
 async function saveForm(btn){
@@ -847,6 +847,7 @@ async function saveForm(btn){
  }
  if(fm.extra?.fromProp&&col==='encomendas')await patch('propostas',fm.extra.fromProp,{estado:'Aceite',encomenda:id});
  closeSheet();toast(wasNew?'Criado':'Guardado');
+ if(wasNew&&col==='encomendas'&&!CFG.emailEncomendas)encMailSheet(id);
  if(wasNew&&col==='encomendas'&&CFG.emailEncomendas){const r=await enviarEncEmail(id);toast(r.ok?'Encomenda criada e enviada por email':'Encomenda criada. '+r.msg)}
  if(wasNew&&col==='entidades')go('ficha',{id});
 }
@@ -976,6 +977,7 @@ const ACT={
  lnFree:d=>{addLinha(null);if(d.c){const L=S.form.linhas;L[L.length-1].nome=d.c;redrawLinhas()}},
  lnDel:d=>{S.form.linhas.splice(+d.i,1);redrawLinhas()},
  prop2enc:()=>{const p=S.data.propostas.get(S.form.id);if(!p)return;closeSheet();openForm('encomendas',null,{entidade:p.entidade,linhas:clone(p.linhas),obs:p.obs||'',estado:'Nova',_extra:{fromProp:p.id}})},
+ mailgo:()=>{},
  encEmail:async(d,b)=>{b.disabled=true;const r=await enviarEncEmail(S.form.id);b.disabled=false;toast(r.msg)},
  copydoc:(d,b)=>{const col=S.form.col,x=S.data[col].get(S.form.id);const t=totais(x.linhas);const txt=`${col==='propostas'?'Proposta':'Encomenda'} · ${entName(x.entidade)} · ${fDY(x.data)}\n\n${(x.linhas||[]).map(l=>`${l.qt} × ${l.nome} — ${eur(l.preco)}${+l.desc?` (−${l.desc}%)`:''} = ${eur(lineBase(l))}`).join('\n')}\n\nTotal sem IVA: ${eur(t.base)}\nIVA: ${eur(t.iva)}\nTotal: ${eur(t.total)}${x.validade?`\nVálida até ${fDY(x.validade)}`:''}${x.obs?`\n\n${x.obs}`:''}`;copyText(txt,b)},
  aicopy:(d,b)=>copyText($('#aiout')?.textContent||'',b),
@@ -1016,7 +1018,7 @@ document.addEventListener('click',e=>{
  const b=e.target.closest('[data-act]');
  if(!e.target.closest('.pick'))document.querySelectorAll('.pkl').forEach(p=>p.hidden=true);
  if(!b)return;const a=b.dataset.act;if(!ACT[a])return;
- if(b.tagName==='A')return;e.preventDefault();e.stopPropagation();ACT[a](b.dataset,b,e)});
+ if(b.tagName==='A'){if(a==='mailgo')setTimeout(closeSheet,400);return}e.preventDefault();e.stopPropagation();ACT[a](b.dataset,b,e)});
 document.addEventListener('keydown',e=>{
  if(e.key==='Escape'&&!$('#sheet').hidden){closeSheet();return}
  const t=e.target;
@@ -1069,6 +1071,20 @@ async function uploadFoto(file){const ext=((file.name||'').split('.').pop()||'jp
 
 /* --- Claude através da função "claude" do Supabase --- */
 function parseJ(t){t=String(t||'').trim();try{return JSON.parse(t)}catch(_){}const f=t.match(/```(?:json)?\s*([\s\S]*?)```/);if(f){try{return JSON.parse(f[1])}catch(_){}}const i=Math.min(...['{','['].map(c=>{const k=t.indexOf(c);return k<0?1e9:k})),j=Math.max(t.lastIndexOf('}'),t.lastIndexOf(']'));if(i<1e9&&j>i)return JSON.parse(t.slice(i,j+1));throw new Error('no json')}
+const GERAL='geral@coronelcafe.com';
+function encMail(x){const e=ent(x.entidade)||{};const em=String(e.email||'').split(/[;,\s]+/).find(v=>/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v))||'';
+ const t=totais(x.linhas),nome=e.nome||'Cliente';
+ const linhas=(x.linhas||[]).map(l=>`- ${l.qt} × ${l.nome}: ${eur(l.preco)}${+l.desc?` (desconto ${l.desc}%)`:''} = ${eur(lineBase(l))}`).join('\n');
+ const resumo=`${linhas||'(sem artigos)'}\n\nTotal sem IVA: ${eur(t.base)}\nIVA: ${eur(t.iva)}\nTotal: ${eur(t.total)}${x.entrega?`\n\nEntrega prevista: ${fDY(x.entrega)}`:''}`;
+ const obs=x.obs?`\n\nObservações: ${x.obs}`:'';
+ const ass=`\n\n${assin()}\n919 982 150 · ${GERAL}`;
+ let to,subject,body,cc='';
+ if(em){to=em;cc=GERAL;subject=`Confirmação de encomenda · Coronel Café · ${fDY(x.data)}`;body=`Olá${e.contacto?' '+e.contacto:''},\n\nConfirmamos a sua encomenda de ${fDY(x.data)}:\n\n${resumo}\n\nQualquer dúvida, estamos ao dispor.${ass}`}
+ else{to=GERAL;subject=`Encomenda · ${nome} · ${fDY(x.data)} · ${eur(t.total)}`;body=`Nova encomenda de ${nome} (cliente sem email na ficha).${e.telemovel||e.telefone?`\nContacto: ${e.telemovel||e.telefone}`:''}\n\n${resumo}${obs}${ass}`}
+ const q=[cc&&'cc='+encodeURIComponent(cc),'subject='+encodeURIComponent(subject),'body='+encodeURIComponent(body)].filter(Boolean).join('&');
+ return{href:`mailto:${to}?${q}`,to,cliente:!!em}}
+function encMailSheet(id){const x=S.data.encomendas.get(id);if(!x)return;const m=encMail(x);
+ openSheet(`<div class="sh"><h2>Encomenda guardada</h2><button class="ib" data-act="close" aria-label="Fechar">${ic('x')}</button></div><div class="sb"><p>${m.cliente?`Enviar a confirmação para <b>${esc(m.to)}</b>, com cópia para ${GERAL}?`:`Este cliente não tem email na ficha. A encomenda segue só para <b>${GERAL}</b>.`}</p><p class="note">Abre o seu programa de email com a mensagem já preenchida. Reveja e carregue em Enviar.</p></div><div class="sf"><span class="grow"></span><button class="btn" data-act="close" type="button">Agora não</button><a class="btn pri" data-act="mailgo" href="${esc(m.href)}">Abrir email</a></div>`)}
 async function enviarEncEmail(id){
  const{data:{session}}=await S.db.auth.getSession();
  try{const r=await fetch(CFG.url+'/functions/v1/encomenda-email',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?.access_token||''),apikey:CFG.anonKey},body:JSON.stringify({id})});
