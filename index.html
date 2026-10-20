@@ -899,7 +899,7 @@ async function aiRun(prompt,{phone}={}){
   if(phone&&$('#aican')?.value==='WhatsApp'){wa.href=`https://wa.me/${waNum(phone)}?text=${encodeURIComponent(text)}`;wa.hidden=false}else wa.hidden=true;
  }catch(e){if($('#aiout'))$('#aiout').textContent=e.text?e.text+'\n\n'+aiErr(e):aiErr(e)}
  finally{$('#aibox')?.querySelectorAll('button').forEach(b=>b.disabled=false)}}
-const assin=()=>(S.me?.name?S.me.name.split(' ')[0]+' · ':'')+'CORONEL CAFÉ';
+const assin=()=>{const n=(S.me?.name||'').trim();return !n||/coronel/i.test(n)?'Coronel Café':n+' · Coronel Café'};
 
 /* --- assistente com ferramentas --- */
 function compact(col,d){const o={id:d.id};for(const[k,v]of Object.entries(d)){if(['id','atualizado','por','criadoPor','foto','exemplo'].includes(k)||v===''||v==null)continue;if(k==='entidade')o.cliente=entName(v);else if(k==='linhas'){o.artigos=(v||[]).map(l=>l.qt+'x '+l.nome).join(', ');o.total=Math.round(docTotal(d)*100)/100}else if(k==='resp')o.responsavel=nameOf(v);else if(k==='tipos')o.tipos=v.map(x=>TIPOS[x]);else if(k==='estado'&&col==='pagamentos')o.estado=EST_PAG[v];else if(k==='relatorio'||k==='notas'||k==='descricao')o[k]=String(v).slice(0,300);else o[k]=v}return o}
