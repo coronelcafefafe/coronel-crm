@@ -267,6 +267,7 @@ table.tt{width:100%;border-collapse:collapse;font-size:13.5px}
 .ai .row2{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .ai select{border:1px solid var(--line);background:var(--surface);border-radius:9px;padding:7px 10px}
 .note{font-size:13px;color:var(--ink-3)}
+.hist{margin-top:14px;border:1px solid var(--line);border-radius:11px;padding:12px;background:var(--surface-2)}.hist-h{font-weight:500;margin-bottom:8px}.hist-i{padding:8px 0;border-top:1px solid var(--line)}.hist-i:first-of-type{border-top:0}.hist-t{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.hist-t .btn{margin-left:auto}.hist ul{margin:6px 0 0;padding-left:18px;font-size:14px}.hist li .num{color:var(--ink-3)}
 .err{color:var(--bad);font-size:13px}
 
 /* chat */
@@ -812,7 +813,7 @@ function fieldH(f,v){
   case'bool':return `<div class="fld${f.full?' full':''}"><label class="tog"><input id="${id}" type="checkbox" ${v?'checked':''}><span>${esc(f.l)}</span></label></div>`;
   case'user':{const ids=teamIds();i=`<select id="${id}"><option value="">—</option>${ids.map(u=>`<option value="${esc(u)}" ${v===u?'selected':''}>${esc(nameOf(u))}${u===S.uid?' (eu)':''}</option>`).join('')}</select>`;break}
   case'ent':i=`<div class="pick"><input id="${id}-q" class="inp" data-pick="${f.k}" value="${esc(v?entName(v):'')}" placeholder="Procurar cliente pelo nome" autocomplete="off"><input type="hidden" id="${id}" value="${esc(v||'')}"><div class="pkl" id="pk-${f.k}" hidden></div></div>`;break;
-  case'linhas':i=`<div id="linhas">${linhasH()}</div>`;break;
+  case'linhas':i=`<div id="linhas">${linhasH()}</div>${['encomendas','propostas'].includes(S.form?.col)?`<div id="enc-hist">${histH()}</div>`:''}`;break;
   case'foto':i=`<div style="display:flex;gap:12px;align-items:center"><div class="ph-img" style="width:96px;border-radius:10px;overflow:hidden" id="fotoprev">${v?`<img src="${esc(fotoUrl(v))}" alt="">`:'—'}</div><input type="hidden" id="${id}" value="${esc(v||'')}">${S.assets?`<label class="btn sm">Escolher fotografia<input type="file" accept="image/png,image/jpeg,image/webp" data-foto="1" hidden></label>`:'<span class="note">Só quem pode editar o CRM consegue carregar fotografias.</span>'}</div>`;break;
  }
  return `<div class="fld${f.full?' full':''}" data-k="${f.k}">${lab}${i}</div>`}
@@ -821,7 +822,7 @@ function readF(f){if(f.t==='linhas')return clone(S.form?.linhas||[]);const el=do
 function openForm(col,id,preset){
  const ex=id?S.data[col].get(id):null;if(id&&!ex)return toast('Registo não encontrado');
  const vals={};F[col].forEach(f=>{vals[f.k]=ex?ex[f.k]:(preset&&preset[f.k]!==undefined?preset[f.k]:defVal(f))});
- S.form={col,id,linhas:clone(vals.linhas||[]),sug:null,extra:preset&&preset._extra};
+ S.form={col,id,linhas:clone(vals.linhas||[]),sug:null,extra:preset&&preset._extra,ent0:vals.entidade||''};
  const ro=!S.canWrite;
  let body=`<form id="frm" novalidate><div class="fg">`;
  F[col].forEach(f=>{if(col==='visitas'&&f.k==='relatorio'&&S.sample)body+=`<div class="fld full">${aiVisitaH()}</div>`;body+=fieldH(f,vals[f.k])});
@@ -830,7 +831,7 @@ function openForm(col,id,preset){
  if(ex&&(col==='encomendas'||col==='propostas'))body+=`<div style="margin-top:16px">${aiBox(col,ex)}</div>`;
  const t=ex?(col==='entidades'?ex.nome:'Editar '+NOMES[col][0]):NOMES[col][1];
  openSheet(`<div class="sh"><h2>${esc(t)}</h2><button class="ib" data-act="close" aria-label="Fechar">${ic('x')}</button></div><div class="sb">${body}</div>
- <div class="sf">${ex&&!ro?`<button class="btn dng" data-act="del" type="button">Apagar</button>`:''}${ex&&col==='propostas'&&!ro?`<button class="btn" data-act="prop2enc" type="button">Converter em encomenda</button>`:''}${ex&&(col==='encomendas'||col==='propostas')?`<button class="btn" data-act="copydoc" type="button">${ic('copy',16)}Copiar texto</button>`:''}${ex&&col==='encomendas'&&!CFG.emailEncomendas?`<a class="btn" data-act="mailgo" href="${esc(encMail(ex).href)}">${ic("mail",16)}Enviar email</a>`:''}${ex&&col==='encomendas'&&!ro&&CFG.emailEncomendas?`<button class="btn" data-act="encEmail" type="button">Enviar por email</button>`:''}<span class="grow"></span><button class="btn" data-act="close" type="button">Cancelar</button>${ro?'':`<button class="btn pri" data-act="saveform" type="button">Guardar</button>`}</div>`);
+ <div class="sf">${ex&&!ro?`<button class="btn dng" data-act="del" type="button">Apagar</button>`:''}${ex&&col==='propostas'&&!ro?`<button class="btn" data-act="prop2enc" type="button">Converter em encomenda</button>`:''}${ex&&(col==='encomendas'||col==='propostas')?`<button class="btn" data-act="copydoc" type="button">${ic('copy',16)}Copiar texto</button>`:''}${ex&&col==='encomendas'&&!ro?`<button class="btn" data-act="repEnc2" type="button">Repetir encomenda</button>`:''}${ex&&col==='encomendas'&&!CFG.emailEncomendas?`<a class="btn" data-act="mailgo" href="${esc(encMail(ex).href)}">${ic("mail",16)}Enviar email</a>`:''}${ex&&col==='encomendas'&&!ro&&CFG.emailEncomendas?`<button class="btn" data-act="encEmail" type="button">Enviar por email</button>`:''}<span class="grow"></span><button class="btn" data-act="close" type="button">Cancelar</button>${ro?'':`<button class="btn pri" data-act="saveform" type="button">Guardar</button>`}</div>`);
  setTimeout(()=>{const f=$('#sheetc input:not([type=hidden]),#sheetc select');if(f&&!ex&&innerWidth>760)f.focus()},50);
 }
 async function saveForm(btn){
@@ -860,6 +861,11 @@ function linhasH(){
  <div class="pick" style="margin-top:8px;display:flex;gap:8px"><div style="flex:1;position:relative"><input class="inp" id="ln-q" data-lnpick="1" placeholder="Adicionar artigo do catálogo" autocomplete="off"><div class="pkl" id="pk-ln" hidden></div></div><button type="button" class="btn" data-act="lnFree">Linha livre</button></div>
  <div class="tot num" id="ln-tot">${totH(t)}</div>`}
 const totH=t=>`<span>Total sem IVA</span><b>${eur(t.base)}</b><span>IVA</span><b>${eur(t.iva)}</b><span class="big">Total</span><b class="big">${eur(t.total)}</b>`;
+function histH(){const eid=($('#f-entidade')?.value)||S.form?.ent0||'';if(!eid)return '';
+ const L=D('encomendas').filter(x=>x.entidade===eid&&x.id!==S.form?.id&&x.estado!=='Cancelada').sort(byDateDesc).slice(0,5);
+ const ro=!S.canWrite;
+ return `<div class="hist"><div class="hist-h">Últimas encomendas de ${esc(entName(eid))}</div>${L.length?L.map(x=>`<div class="hist-i"><div class="hist-t"><b>${fDY(x.data)}</b><span class="note">${esc(x.estado||'Nova')} · ${eur(docTotal(x))}</span>${ro?'':`<button type="button" class="btn sm" data-act="repEnc" data-id="${x.id}">Repetir</button>`}</div><ul>${(x.linhas||[]).map(l=>`<li>${esc(l.qt)} × ${esc(l.nome)} <span class="num">${eur(l.preco)}${+l.desc?` (−${esc(l.desc)}%)`:''}</span></li>`).join('')||'<li class="note">Sem artigos</li>'}</ul></div>`).join(''):'<p class="note">Ainda não há encomendas deste cliente no CRM.</p>'}</div>`}
+function redrawHist(){const el=$('#enc-hist');if(el)el.innerHTML=histH()}
 function redrawLinhas(){const el=$('#linhas');if(el)el.innerHTML=linhasH()}
 function addLinha(a){S.form.linhas.push(a?{artigo:a.id,nome:a.nome+(a.ref?' ('+a.ref+')':''),qt:1,preco:+a.preco||0,desc:0,iva:String(a.iva??'23')}:{nome:'',qt:1,preco:0,desc:0,iva:'23'});redrawLinhas();const ins=document.querySelectorAll('.ln-n');const last=ins[ins.length-1];if(last&&!a)last.focus()}
 
@@ -971,7 +977,9 @@ const ACT={
  mon:d=>{S.cal.month=addMonths(S.cal.month+'-01',+d.d).slice(0,7);render()},
  hoje:()=>{S.cal.month=TODAY().slice(0,7);S.cal.day=TODAY();render()},
  quem:d=>{S.cal.quem=d.c;render()},
- pick:d=>{$('#f-'+d.k).value=d.id;$('#f-'+d.k+'-q').value=entName(d.id);$('#pk-'+d.k).hidden=true},
+ pick:d=>{$('#f-'+d.k).value=d.id;$('#f-'+d.k+'-q').value=entName(d.id);$('#pk-'+d.k).hidden=true;if(d.k==='entidade')redrawHist()},
+ repEnc:d=>{const x=S.data.encomendas.get(d.id);if(!x||!S.form)return;S.form.linhas=clone(x.linhas||[]);redrawLinhas();toast('Artigos copiados da encomenda de '+fDY(x.data))},
+ repEnc2:()=>{const x=S.data.encomendas.get(S.form.id);if(!x)return;closeSheet();openForm('encomendas',null,{entidade:x.entidade,linhas:clone(x.linhas||[]),estado:'Nova'})},
  pickNew:async d=>{const id=await save('entidades',null,{nome:d.c,estado:'lead',resp:S.uid||'',tipos:[]});if(!id)return;$('#f-'+d.k).value=id;$('#f-'+d.k+'-q').value=d.c;$('#pk-'+d.k).hidden=true;toast('Lead criado')},
  lnAdd:d=>{const a=S.data.artigos.get(d.id);addLinha(a)},
  lnFree:d=>{addLinha(null);if(d.c){const L=S.form.linhas;L[L.length-1].nome=d.c;redrawLinhas()}},
