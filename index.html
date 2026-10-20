@@ -816,7 +816,7 @@ function fieldH(f,v){
   case'foto':i=`<div style="display:flex;gap:12px;align-items:center"><div class="ph-img" style="width:96px;border-radius:10px;overflow:hidden" id="fotoprev">${v?`<img src="${esc(fotoUrl(v))}" alt="">`:'—'}</div><input type="hidden" id="${id}" value="${esc(v||'')}">${S.assets?`<label class="btn sm">Escolher fotografia<input type="file" accept="image/png,image/jpeg,image/webp" data-foto="1" hidden></label>`:'<span class="note">Só quem pode editar o CRM consegue carregar fotografias.</span>'}</div>`;break;
  }
  return `<div class="fld${f.full?' full':''}" data-k="${f.k}">${lab}${i}</div>`}
-function readF(f){const el=document.getElementById('f-'+f.k);if(!el)return undefined;
+function readF(f){if(f.t==='linhas')return clone(S.form?.linhas||[]);const el=document.getElementById('f-'+f.k);if(!el)return undefined;
  switch(f.t){case'num':return el.value===''?null:parseFloat(el.value);case'multi':return[...el.querySelectorAll('input:checked')].map(x=>x.value);case'bool':return el.checked;case'linhas':return clone(S.form.linhas);default:return el.value.trim()}}
 function openForm(col,id,preset){
  const ex=id?S.data[col].get(id):null;if(id&&!ex)return toast('Registo não encontrado');
@@ -826,10 +826,11 @@ function openForm(col,id,preset){
  let body=`<form id="frm" novalidate><div class="fg">`;
  F[col].forEach(f=>{if(col==='visitas'&&f.k==='relatorio'&&S.sample)body+=`<div class="fld full">${aiVisitaH()}</div>`;body+=fieldH(f,vals[f.k])});
  body+=`</div></form>`;
+ if(ex&&col==='encomendas'&&CFG.emailEncomendas)body+=`<p class="note" style="margin-top:12px">${ex.emailEnviado?'Enviada por email em '+esc(new Date(ex.emailEnviado).toLocaleString('pt-PT',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})):'Ainda não enviada por email.'}</p>`;
  if(ex&&(col==='encomendas'||col==='propostas'))body+=`<div style="margin-top:16px">${aiBox(col,ex)}</div>`;
  const t=ex?(col==='entidades'?ex.nome:'Editar '+NOMES[col][0]):NOMES[col][1];
  openSheet(`<div class="sh"><h2>${esc(t)}</h2><button class="ib" data-act="close" aria-label="Fechar">${ic('x')}</button></div><div class="sb">${body}</div>
- <div class="sf">${ex&&!ro?`<button class="btn dng" data-act="del" type="button">Apagar</button>`:''}${ex&&col==='propostas'&&!ro?`<button class="btn" data-act="prop2enc" type="button">Converter em encomenda</button>`:''}${ex&&(col==='encomendas'||col==='propostas')?`<button class="btn" data-act="copydoc" type="button">${ic('copy',16)}Copiar texto</button>`:''}<span class="grow"></span><button class="btn" data-act="close" type="button">Cancelar</button>${ro?'':`<button class="btn pri" data-act="saveform" type="button">Guardar</button>`}</div>`);
+ <div class="sf">${ex&&!ro?`<button class="btn dng" data-act="del" type="button">Apagar</button>`:''}${ex&&col==='propostas'&&!ro?`<button class="btn" data-act="prop2enc" type="button">Converter em encomenda</button>`:''}${ex&&(col==='encomendas'||col==='propostas')?`<button class="btn" data-act="copydoc" type="button">${ic('copy',16)}Copiar texto</button>`:''}${ex&&col==='encomendas'&&!ro&&CFG.emailEncomendas?`<button class="btn" data-act="encEmail" type="button">Enviar por email</button>`:''}<span class="grow"></span><button class="btn" data-act="close" type="button">Cancelar</button>${ro?'':`<button class="btn pri" data-act="saveform" type="button">Guardar</button>`}</div>`);
  setTimeout(()=>{const f=$('#sheetc input:not([type=hidden]),#sheetc select');if(f&&!ex&&innerWidth>760)f.focus()},50);
 }
 async function saveForm(btn){
@@ -846,6 +847,7 @@ async function saveForm(btn){
  }
  if(fm.extra?.fromProp&&col==='encomendas')await patch('propostas',fm.extra.fromProp,{estado:'Aceite',encomenda:id});
  closeSheet();toast(wasNew?'Criado':'Guardado');
+ if(wasNew&&col==='encomendas'&&CFG.emailEncomendas){const r=await enviarEncEmail(id);toast(r.ok?'Encomenda criada e enviada por email':'Encomenda criada. '+r.msg)}
  if(wasNew&&col==='entidades')go('ficha',{id});
 }
 
@@ -974,6 +976,7 @@ const ACT={
  lnFree:d=>{addLinha(null);if(d.c){const L=S.form.linhas;L[L.length-1].nome=d.c;redrawLinhas()}},
  lnDel:d=>{S.form.linhas.splice(+d.i,1);redrawLinhas()},
  prop2enc:()=>{const p=S.data.propostas.get(S.form.id);if(!p)return;closeSheet();openForm('encomendas',null,{entidade:p.entidade,linhas:clone(p.linhas),obs:p.obs||'',estado:'Nova',_extra:{fromProp:p.id}})},
+ encEmail:async(d,b)=>{b.disabled=true;const r=await enviarEncEmail(S.form.id);b.disabled=false;toast(r.msg)},
  copydoc:(d,b)=>{const col=S.form.col,x=S.data[col].get(S.form.id);const t=totais(x.linhas);const txt=`${col==='propostas'?'Proposta':'Encomenda'} · ${entName(x.entidade)} · ${fDY(x.data)}\n\n${(x.linhas||[]).map(l=>`${l.qt} × ${l.nome} — ${eur(l.preco)}${+l.desc?` (−${l.desc}%)`:''} = ${eur(lineBase(l))}`).join('\n')}\n\nTotal sem IVA: ${eur(t.base)}\nIVA: ${eur(t.iva)}\nTotal: ${eur(t.total)}${x.validade?`\nVálida até ${fDY(x.validade)}`:''}${x.obs?`\n\n${x.obs}`:''}`;copyText(txt,b)},
  aicopy:(d,b)=>copyText($('#aiout')?.textContent||'',b),
  art:d=>openArt(d.id),
@@ -1066,6 +1069,13 @@ async function uploadFoto(file){const ext=((file.name||'').split('.').pop()||'jp
 
 /* --- Claude através da função "claude" do Supabase --- */
 function parseJ(t){t=String(t||'').trim();try{return JSON.parse(t)}catch(_){}const f=t.match(/```(?:json)?\s*([\s\S]*?)```/);if(f){try{return JSON.parse(f[1])}catch(_){}}const i=Math.min(...['{','['].map(c=>{const k=t.indexOf(c);return k<0?1e9:k})),j=Math.max(t.lastIndexOf('}'),t.lastIndexOf(']'));if(i<1e9&&j>i)return JSON.parse(t.slice(i,j+1));throw new Error('no json')}
+async function enviarEncEmail(id){
+ const{data:{session}}=await S.db.auth.getSession();
+ try{const r=await fetch(CFG.url+'/functions/v1/encomenda-email',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?.access_token||''),apikey:CFG.anonKey},body:JSON.stringify({id})});
+  const j=await r.json().catch(()=>({}));
+  if(r.ok)return{ok:true,msg:'Encomenda enviada para '+(j.para||'geral@coronelcafe.com')};
+  return{ok:false,msg:j.code==='email_desligado'?'Envio por email ainda não está ligado':'Não foi possível enviar o email da encomenda'}}
+ catch(e){return{ok:false,msg:'Sem ligação: o email da encomenda não foi enviado'}}}
 async function callClaude(body,signal){
  const{data:{session}}=await S.db.auth.getSession();
  let r;try{r=await fetch(CFG.url+'/functions/v1/claude',{method:'POST',signal,headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?.access_token||''),apikey:CFG.anonKey},body:JSON.stringify(body)})}
