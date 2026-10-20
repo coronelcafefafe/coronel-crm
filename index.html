@@ -1073,14 +1073,14 @@ async function uploadFoto(file){const ext=((file.name||'').split('.').pop()||'jp
 function parseJ(t){t=String(t||'').trim();try{return JSON.parse(t)}catch(_){}const f=t.match(/```(?:json)?\s*([\s\S]*?)```/);if(f){try{return JSON.parse(f[1])}catch(_){}}const i=Math.min(...['{','['].map(c=>{const k=t.indexOf(c);return k<0?1e9:k})),j=Math.max(t.lastIndexOf('}'),t.lastIndexOf(']'));if(i<1e9&&j>i)return JSON.parse(t.slice(i,j+1));throw new Error('no json')}
 const GERAL='geral@coronelcafe.com';
 function encMail(x){const e=ent(x.entidade)||{};const em=String(e.email||'').split(/[;,\s]+/).find(v=>/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v))||'';
- const t=totais(x.linhas),nome=e.nome||'Cliente';
+ const t=totais(x.linhas),nome=e.nome||'Cliente',num=e.codigoXd?` · Cliente n.º ${e.codigoXd}`:'',cab=`Cliente: ${nome}${e.codigoXd?` (n.º ${e.codigoXd})`:''}`;
  const linhas=(x.linhas||[]).map(l=>`- ${l.qt} × ${l.nome}: ${eur(l.preco)}${+l.desc?` (desconto ${l.desc}%)`:''} = ${eur(lineBase(l))}`).join('\n');
  const resumo=`${linhas||'(sem artigos)'}\n\nTotal sem IVA: ${eur(t.base)}\nIVA: ${eur(t.iva)}\nTotal: ${eur(t.total)}${x.entrega?`\n\nEntrega prevista: ${fDY(x.entrega)}`:''}`;
  const obs=x.obs?`\n\nObservações: ${x.obs}`:'';
  const ass=`\n\n${assin()}\n919 982 150 · ${GERAL}`;
  let to,subject,body,cc='';
- if(em){to=em;cc=GERAL;subject=`Confirmação de encomenda · Coronel Café · ${fDY(x.data)}`;body=`Olá${e.contacto?' '+e.contacto:''},\n\nConfirmamos a sua encomenda de ${fDY(x.data)}:\n\n${resumo}\n\nQualquer dúvida, estamos ao dispor.${ass}`}
- else{to=GERAL;subject=`Encomenda · ${nome} · ${fDY(x.data)} · ${eur(t.total)}`;body=`Nova encomenda de ${nome} (cliente sem email na ficha).${e.telemovel||e.telefone?`\nContacto: ${e.telemovel||e.telefone}`:''}\n\n${resumo}${obs}${ass}`}
+ if(em){to=em;cc=GERAL;subject=`Confirmação de encomenda · ${nome}${num} · ${fDY(x.data)}`;body=`Olá${e.contacto?' '+e.contacto:''},\n\nConfirmamos a sua encomenda de ${fDY(x.data)}.\n\n${cab}\n\n${resumo}\n\nQualquer dúvida, estamos ao dispor.${ass}`}
+ else{to=GERAL;subject=`Encomenda · ${nome}${num} · ${fDY(x.data)} · ${eur(t.total)}`;body=`Nova encomenda (cliente sem email na ficha).\n\n${cab}${e.telemovel||e.telefone?`\nContacto: ${e.telemovel||e.telefone}`:''}\n\n${resumo}${obs}${ass}`}
  const q=[cc&&'cc='+encodeURIComponent(cc),'subject='+encodeURIComponent(subject),'body='+encodeURIComponent(body)].filter(Boolean).join('&');
  return{href:`mailto:${to}?${q}`,to,cliente:!!em}}
 function encMailSheet(id){const x=S.data.encomendas.get(id);if(!x)return;const m=encMail(x);
