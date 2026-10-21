@@ -512,10 +512,19 @@ const COLS=['entidades','visitas','tarefas','encomendas','propostas','avencas','
 
 /* ================= estado ================= */
 const S={db:null,user:null,sample:null,assets:null,uid:null,me:null,canWrite:true,offline:false,
- data:Object.fromEntries([...COLS,'equipa'].map(c=>[c,new Map()])),ready:{},profiles:{},
+ data:Object.fromEntries([...COLS,'equipa','xd_documentos'].map(c=>[c,new Map()])),ready:{},profiles:{},
  view:'inicio',params:{},hist:[],q:{},f:{},lim:{},cal:{month:TODAY().slice(0,7),day:TODAY(),quem:'eu'},
  form:null,chat:[],chatBusy:false,chatStream:'',chatCtl:null};
 const D=c=>[...S.data[c].values()];
+const xdPend=id=>D('xd_documentos').filter(d=>d.entidade===id&&+d.pendente>0.005).sort((a,b)=>(a.vencimento||a.data||'').localeCompare(b.vencimento||b.data||''));
+const diasAtraso=d=>{const v=d.vencimento||d.data;if(!v)return 0;return Math.max(0,Math.floor((new Date(TODAY()+'T12:00')-new Date(v.slice(0,10)+'T12:00'))/864e5))};
+function xdContaH(id){const P=xdPend(id),tot=P.reduce((s,d)=>s+(+d.pendente||0),0),ligado=S.data.xd_documentos.size>0;
+ const ult=D('xd_documentos').filter(d=>d.entidade===id).sort((a,b)=>(b.data||'').localeCompare(a.data||'')).slice(0,8);
+ return `<div class="panel" style="margin-bottom:14px"><div class="ph"><h2>Pendentes no XD</h2>${P.length?`<b class="num" style="color:var(--bad)">${eur(tot)}</b>`:''}</div><div class="pb">${!ligado?'<p class="note">Os pendentes do XD aparecem aqui quando a ligação ao XD estiver ativa.</p>':P.length?`<table class="tt"><thead><tr><th>Documento</th><th>Data</th><th>Vencimento</th><th>Atraso</th><th>Pendente</th></tr></thead><tbody>${P.map(d=>{const a=diasAtraso(d);return `<tr><td>${esc([d.tipo,d.numero].filter(Boolean).join(' '))}</td><td>${fD(d.data)}</td><td>${fD(d.vencimento)}</td><td class="num" style="${a>30?'color:var(--bad)':''}">${a?a+' dias':'—'}</td><td class="num">${eur(d.pendente)}</td></tr>`}).join('')}</tbody></table>`:'<p class="note">Sem documentos por pagar no XD.</p>'}
+ ${ult.length?`<div class="eyebrow" style="margin:16px 0 8px">Últimos documentos no XD</div><table class="tt"><tbody>${ult.map(d=>`<tr><td>${esc([d.tipo,d.numero].filter(Boolean).join(' '))}</td><td>${fD(d.data)}</td><td class="num">${eur(d.total)}</td><td class="note">${+d.pendente>0.005?'Por pagar':'Pago'}</td></tr>`).join('')}</tbody></table>`:''}</div></div>`}
+function xdTopH(){if(!S.data.xd_documentos.size)return '';const g=new Map();D('xd_documentos').filter(d=>d.entidade&&+d.pendente>0.005).forEach(d=>{const x=g.get(d.entidade)||{v:0,a:0};x.v+=+d.pendente;x.a=Math.max(x.a,diasAtraso(d));g.set(d.entidade,x)});
+ const L=[...g.entries()].sort((a,b)=>b[1].v-a[1].v),tot=L.reduce((s,[,x])=>s+x.v,0);
+ return `<div class="panel" style="margin-top:16px"><div class="ph"><h2>Clientes com pendentes</h2><span class="note">${L.length} clientes · ${eur(tot)}</span></div><div class="pb">${L.length?`<table class="tt"><thead><tr><th>Cliente</th><th>Maior atraso</th><th>Pendente</th></tr></thead><tbody>${L.slice(0,10).map(([id,x])=>`<tr data-act="ficha" data-id="${id}" style="cursor:pointer"><td>${esc(entName(id))}</td><td class="num" style="${x.a>30?'color:var(--bad)':''}">${x.a?x.a+' dias':'—'}</td><td class="num">${eur(x.v)}</td></tr>`).join('')}</tbody></table>`:'<p class="note">Sem pendentes no XD.</p>'}</div></div>`}
 const ent=id=>S.data.entidades.get(id);
 const entName=id=>ent(id)?.nome||'Cliente removido';
 const nameOf=id=>!id?'—':(S.data.equipa.get(id)?.nome||(id===S.uid?(S.me?.name||'Eu'):'Colaborador'));
@@ -650,7 +659,7 @@ VIEWS.inicio=()=>loadingOr(()=>{
  const porTipo=Object.keys(TIPOS).map(k=>[TIPOS[k],ents.filter(e=>e.estado==='cliente'&&(e.tipos||[]).includes(k)).length]);const mx=Math.max(1,...porTipo.map(x=>x[1]));
  out+=`<div class="grid2"><div class="panel"><div class="ph"><h2>Vendas</h2><span class="note">últimos 12 meses, com IVA</span></div><div class="pb">${chartSVG(months)}</div></div>
   <div class="panel"><div class="ph"><h2>Top artigos do ano</h2></div><div class="pb">${top.length?`<table class="tt"><thead><tr><th>Artigo</th><th>Valor s/ IVA</th></tr></thead><tbody>${top.map(([n,v])=>`<tr><td>${esc(n)}</td><td class="num">${eur(v)}</td></tr>`).join('')}</tbody></table>`:'<p class="note">Aparece quando houver encomendas este ano.</p>'}
-  <div class="eyebrow" style="margin:18px 0 10px">Clientes por tipo</div><div class="bars">${porTipo.map(([n,v])=>`<div><div class="l"><span>${n}</span><b class="num">${v}</b></div><div class="t"><i style="width:${v/mx*100}%"></i></div></div>`).join('')}</div></div></div></div>`;
+  <div class="eyebrow" style="margin:18px 0 10px">Clientes por tipo</div><div class="bars">${porTipo.map(([n,v])=>`<div><div class="l"><span>${n}</span><b class="num">${v}</b></div><div class="t"><i style="width:${v/mx*100}%"></i></div></div>`).join('')}</div></div></div></div>`+xdTopH();
  return `<div class="pg">${out}</div>`;
 });
 function chartSVG(months){
@@ -726,8 +735,8 @@ VIEWS.ficha=()=>loadingOr(()=>{
  const e=ent(S.params.id);if(!e)return `<div class="panel empty"><b>Cliente não encontrado</b>Pode ter sido apagado.</div>`;
  const tab=S.params.tab||'resumo',r=related(e.id),tel=e.telemovel||e.telefone,addr=[e.morada,e.cp,e.localidade].filter(Boolean).join(', ');
  const yr=TODAY().slice(0,4),encAno=r.encomendas.filter(x=>x.estado!=='Cancelada'&&(x.data||'').startsWith(yr)).reduce((s,x)=>s+docTotal(x),0);
- const porRec=r.pagamentos.filter(p=>p.estado==='receber').reduce((s,p)=>s+(+p.valor||0),0);
- const tabs=[['resumo','Resumo'],['visitas','Visitas',r.visitas.length],['encomendas','Encomendas',r.encomendas.length],['propostas','Propostas',r.propostas.length],['pedidos','Pedidos',r.pedidos.length],['avencas','Avenças',r.avencas.length],['conta','Conta corrente',r.pagamentos.length],['tarefas','Tarefas',r.tarefas.filter(t=>!t.feito).length]];
+ const porRec=r.pagamentos.filter(p=>p.estado==='receber').reduce((s,p)=>s+(+p.valor||0),0)+xdPend(e.id).reduce((s,d)=>s+(+d.pendente||0),0);
+ const tabs=[['resumo','Resumo'],['visitas','Visitas',r.visitas.length],['encomendas','Encomendas',r.encomendas.length],['propostas','Propostas',r.propostas.length],['pedidos','Pedidos',r.pedidos.length],['avencas','Avenças',r.avencas.length],['conta','Conta corrente',r.pagamentos.length+xdPend(e.id).length],['tarefas','Tarefas',r.tarefas.filter(t=>!t.feito).length]];
  const est=e.estado||'lead';
  let h=`<div class="pg">${roBanner()}<div class="fh"><span class="av">${esc(initials(e.nome))}</span><div style="min-width:0;flex:1"><h1>${esc(e.nome)}</h1><div class="meta">${badge(ESTADOS[est],toneEst[est])}${(e.tipos||[]).map(k=>badge(TIPOS[k],'gold')).join('')}${e.localidade?badge(e.localidade):''}</div></div>${S.canWrite?`<button class="btn sm" data-act="edit" data-col="entidades" data-id="${e.id}">${ic('edit',16)}<span>Editar</span></button>`:''}</div>
  <div class="acts">
@@ -750,7 +759,7 @@ VIEWS.ficha=()=>loadingOr(()=>{
  if(tab==='pedidos')h+=sub('pedidos',r.pedidos,pedRow,'<b>Sem pedidos</b>Abertura, instalação, manutenção ou assistência.');
  if(tab==='avencas')h+=sub('avencas',r.avencas,avRow,'<b>Sem avenças</b>');
  if(tab==='conta'){const rc=r.pagamentos.filter(p=>p.estado==='fechado'||p.estado==='recibo').reduce((s,p)=>s+(+p.valor||0),0);
-  h+=`<div class="mini"><div><span>Por receber</span><b>${eur(porRec)}</b></div><div><span>Recebido</span><b>${eur(rc)}</b></div><div><span>Encomendas ${yr}</span><b>${eur(encAno)}</b></div><div><span>Avenças ativas</span><b>${r.avencas.filter(a=>a.ativa!==false).length}</b></div></div>`+sub('pagamentos',r.pagamentos,pagRow,'<b>Sem movimentos</b>Registe pagamentos por receber e recebimentos.',{estado:'receber'});}
+  h+=`<div class="mini"><div><span>Por receber</span><b>${eur(porRec)}</b></div><div><span>Recebido</span><b>${eur(rc)}</b></div><div><span>Encomendas ${yr}</span><b>${eur(encAno)}</b></div><div><span>Avenças ativas</span><b>${r.avencas.filter(a=>a.ativa!==false).length}</b></div></div>`+xdContaH(e.id)+sub('pagamentos',r.pagamentos,pagRow,'<b>Sem movimentos</b>Registe pagamentos por receber e recebimentos.',{estado:'receber'});}
  if(tab==='tarefas')h+=sub('tarefas',r.tarefas,tarRow,'<b>Sem tarefas</b>');
  return h+'</div>'});
 
@@ -832,7 +841,7 @@ function openForm(col,id,preset){
  if(ex&&(col==='encomendas'||col==='propostas'))body+=`<div style="margin-top:16px">${aiBox(col,ex)}</div>`;
  const t=ex?(col==='entidades'?ex.nome:'Editar '+NOMES[col][0]):NOMES[col][1];
  openSheet(`<div class="sh"><h2>${esc(t)}</h2><button class="ib" data-act="close" aria-label="Fechar">${ic('x')}</button></div><div class="sb">${body}</div>
- <div class="sf">${ex&&!ro?`<button class="btn dng" data-act="del" type="button">Apagar</button>`:''}${ex&&col==='propostas'&&!ro?`<button class="btn" data-act="prop2enc" type="button">Converter em encomenda</button>`:''}${ex&&(col==='encomendas'||col==='propostas')?`<button class="btn" data-act="copydoc" type="button">${ic('copy',16)}Copiar texto</button>`:''}${ex&&col==='encomendas'&&!ro&&!['Entregue','Faturada','Cancelada'].includes(ex.estado)?`<button class="btn gold" data-act="encEntregue" type="button">Marcar como entregue</button>`:''}${ex&&col==='encomendas'&&!ro?`<button class="btn" data-act="repEnc2" type="button">Repetir encomenda</button>`:''}${ex&&col==='encomendas'&&!CFG.emailEncomendas?`<a class="btn" data-act="mailgo" href="${esc(encMail(ex).href)}">${ic("mail",16)}Enviar email</a>`:''}${ex&&col==='encomendas'&&!ro&&CFG.emailEncomendas?`<button class="btn" data-act="encEmail" type="button">Enviar por email</button>`:''}<span class="grow"></span><button class="btn" data-act="close" type="button">Cancelar</button>${ro?'':`<button class="btn pri" data-act="saveform" type="button">Guardar</button>`}</div>`);
+ <div class="sf">${ex&&!ro?`<button class="btn dng" data-act="del" type="button">Apagar</button>`:''}${ex&&col==='propostas'&&!ro?`<button class="btn" data-act="prop2enc" type="button">Converter em encomenda</button>`:''}${ex&&(col==='encomendas'||col==='propostas')?`<button class="btn" data-act="copydoc" type="button">${ic('copy',16)}Copiar texto</button>`:''}${ex&&col==='encomendas'&&!ro&&!['Entregue','Faturada','Cancelada'].includes(ex.estado)?`<button class="btn gold" data-act="encEntregue" type="button">Marcar como entregue</button>`:''}${ex&&col==='encomendas'&&!ro?`<button class="btn" data-act="repEnc2" type="button">Repetir encomenda</button>`:''}${ex&&col==='encomendas'&&!CFG.emailEncomendas?`<a class="btn" data-act="mailgo" href="${esc(encMail(ex).href)}">${ic("mail",16)}Enviar email</a>`:''}${ex&&col==='encomendas'&&!ro&&CFG.emailEncomendas?`<button class="btn" data-act="encEmail" type="button">Enviar email</button>`:''}<span class="grow"></span><button class="btn" data-act="close" type="button">Cancelar</button>${ro?'':`<button class="btn pri" data-act="saveform" type="button">Guardar</button>`}</div>`);
  setTimeout(()=>{const f=$('#sheetc input:not([type=hidden]),#sheetc select');if(f&&!ex&&innerWidth>760)f.focus()},50);
 }
 async function saveForm(btn){
@@ -849,8 +858,7 @@ async function saveForm(btn){
  }
  if(fm.extra?.fromProp&&col==='encomendas')await patch('propostas',fm.extra.fromProp,{estado:'Aceite',encomenda:id});
  closeSheet();toast(wasNew?'Criado':'Guardado');
- if(wasNew&&col==='encomendas'&&!CFG.emailEncomendas)encMailSheet(id);
- if(wasNew&&col==='encomendas'&&CFG.emailEncomendas){const r=await enviarEncEmail(id);toast(r.ok?'Encomenda criada e enviada por email':'Encomenda criada. '+r.msg)}
+ if(wasNew&&col==='encomendas')encMailSheet(id);
  if(wasNew&&col==='entidades')go('ficha',{id});
 }
 
@@ -988,7 +996,7 @@ const ACT={
  lnDel:d=>{S.form.linhas.splice(+d.i,1);redrawLinhas()},
  prop2enc:()=>{const p=S.data.propostas.get(S.form.id);if(!p)return;closeSheet();openForm('encomendas',null,{entidade:p.entidade,linhas:clone(p.linhas),obs:p.obs||'',estado:'Nova',_extra:{fromProp:p.id}})},
  mailgo:()=>{},
- encEmail:async(d,b)=>{b.disabled=true;const r=await enviarEncEmail(S.form.id);b.disabled=false;toast(r.msg)},
+ encEmail:async(d,b)=>{b.disabled=true;b.textContent='A enviar…';const r=await enviarEncEmail(d.id||S.form.id);b.disabled=false;b.textContent='Enviar email';toast(r.msg);if(r.ok&&d.id)closeSheet()},
  copydoc:(d,b)=>{const col=S.form.col,x=S.data[col].get(S.form.id);const t=totais(x.linhas);const txt=`${col==='propostas'?'Proposta':'Encomenda'} · ${entName(x.entidade)} · ${fDY(x.data)}\n\n${(x.linhas||[]).map(l=>`${l.qt} × ${l.nome} — ${eur(l.preco)}${+l.desc?` (−${l.desc}%)`:''} = ${eur(lineBase(l))}`).join('\n')}\n\nTotal sem IVA: ${eur(t.base)}\nIVA: ${eur(t.iva)}\nTotal: ${eur(t.total)}${x.validade?`\nVálida até ${fDY(x.validade)}`:''}${x.obs?`\n\n${x.obs}`:''}`;copyText(txt,b)},
  aicopy:(d,b)=>copyText($('#aiout')?.textContent||'',b),
  art:d=>openArt(d.id),
@@ -1094,12 +1102,12 @@ function encMail(x){const e=ent(x.entidade)||{};const em=String(e.email||'').spl
  const q=[cc&&'cc='+encodeURIComponent(cc),'subject='+encodeURIComponent(subject),'body='+encodeURIComponent(body)].filter(Boolean).join('&');
  return{href:`mailto:${to}?${q}`,to,cliente:!!em}}
 function encMailSheet(id){const x=S.data.encomendas.get(id);if(!x)return;const m=encMail(x);
- openSheet(`<div class="sh"><h2>Encomenda guardada</h2><button class="ib" data-act="close" aria-label="Fechar">${ic('x')}</button></div><div class="sb"><p>${m.cliente?`Enviar a confirmação para <b>${esc(m.to)}</b>, com cópia para ${GERAL}?`:`Este cliente não tem email na ficha. A encomenda segue só para <b>${GERAL}</b>.`}</p><p class="note">Abre o seu programa de email com a mensagem já preenchida. Reveja e carregue em Enviar.</p></div><div class="sf"><span class="grow"></span><button class="btn" data-act="close" type="button">Agora não</button><a class="btn pri" data-act="mailgo" href="${esc(m.href)}">Abrir email</a></div>`)}
+ openSheet(`<div class="sh"><h2>Encomenda guardada</h2><button class="ib" data-act="close" aria-label="Fechar">${ic('x')}</button></div><div class="sb"><p>${m.cliente?`Enviar a confirmação para <b>${esc(m.to)}</b>, com cópia para ${GERAL}?`:`Este cliente não tem email na ficha. A encomenda segue só para <b>${GERAL}</b>.`}</p><p class="note">${CFG.emailEncomendas?'O email sai de '+GERAL+'.':'Abre o seu programa de email com a mensagem já preenchida. Reveja e carregue em Enviar.'}</p></div><div class="sf"><span class="grow"></span><button class="btn" data-act="close" type="button">Agora não</button>${CFG.emailEncomendas?`<button class="btn pri" data-act="encEmail" data-id="${x.id}" type="button">Enviar email</button>`:`<a class="btn pri" data-act="mailgo" href="${esc(m.href)}">Abrir email</a>`}</div>`)}
 async function enviarEncEmail(id){
  const{data:{session}}=await S.db.auth.getSession();
  try{const r=await fetch(CFG.url+'/functions/v1/encomenda-email',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?.access_token||''),apikey:CFG.anonKey},body:JSON.stringify({id})});
   const j=await r.json().catch(()=>({}));
-  if(r.ok)return{ok:true,msg:'Encomenda enviada para '+(j.para||'geral@coronelcafe.com')};
+  if(r.ok)return{ok:true,msg:'Email enviado para '+(j.para||'geral@coronelcafe.com')+(j.cliente?' (cópia para geral@)':'')};
   return{ok:false,msg:j.code==='email_desligado'?'Envio por email ainda não está ligado':'Não foi possível enviar o email da encomenda'}}
  catch(e){return{ok:false,msg:'Sem ligação: o email da encomenda não foi enviado'}}}
 async function callClaude(body,signal){
@@ -1149,6 +1157,7 @@ async function start(session){
  S.view='inicio';S.hist=[];render();
  await loadTeam();
  await Promise.all(COLS.map(c=>loadTable(c).catch(e=>{console.warn(c,e);S.ready[c]=true})));
+ loadTable('xd_documentos').catch(e=>console.warn('xd',e));
  S.db.channel('crm').on('postgres_changes',{event:'*',schema:'public'},p=>{const col=p.table;if(col==='membros'){loadTeam();return}if(!S.data[col])return;if(p.eventType==='DELETE'){if(p.old?.id)S.data[col].delete(p.old.id)}else{const o=fromRow(p.new);S.data[col].set(o.id,o)}schedule()}).subscribe();
  S.sample=CFG.claude===false?null:makeSample();S.assets=S.canWrite?{upload:uploadFoto}:null;schedule();
 }
