@@ -751,7 +751,7 @@ VIEWS.ficha=()=>loadingOr(()=>{
  const porRec=r.pagamentos.filter(p=>p.estado==='receber').reduce((s,p)=>s+(+p.valor||0),0)+xdPend(e.id).reduce((s,d)=>s+(+d.pendente||0),0);
  const tabs=[['resumo','Resumo'],['visitas','Visitas',r.visitas.length],['encomendas','Encomendas',r.encomendas.length],['propostas','Propostas',r.propostas.length],['pedidos','Pedidos',r.pedidos.length],['avencas','Avenças',r.avencas.length],['conta','Conta corrente',r.pagamentos.length+xdPend(e.id).length],['tarefas','Tarefas',r.tarefas.filter(t=>!t.feito).length]];
  const est=e.estado||'lead';
- let h=`<div class="pg">${roBanner()}<div class="fh"><span class="av">${esc(initials(e.nome))}</span><div style="min-width:0;flex:1"><h1>${esc(e.nome)}</h1><div class="meta">${badge(ESTADOS[est],toneEst[est])}${(e.tipos||[]).map(k=>badge(TIPOS[k],'gold')).join('')}${e.localidade?badge(e.localidade):''}</div></div>${S.canWrite?`<button class="btn sm" data-act="edit" data-col="entidades" data-id="${e.id}">${ic('edit',16)}<span>Editar</span></button>`:''}</div>
+ let h=`<div class="pg">${roBanner()}<div class="fh"><span class="av">${esc(initials(e.nome))}</span><div style="min-width:0;flex:1"><h1>${esc(e.nome)}</h1><div class="meta">${badge(ESTADOS[est],toneEst[est])}${(e.tipos||[]).map(k=>badge(TIPOS[k],'gold')).join('')}${e.localidade?badge(e.localidade):''}${est==='cliente'&&!e.codigoXd?badge('Por criar no XD','warn'):''}</div></div>${S.canWrite&&est==='cliente'&&!e.codigoXd?`<button class="btn sm" data-act="xdPed" data-id="${e.id}">Pedir criação no XD</button>`:''}${S.canWrite?`<button class="btn sm" data-act="edit" data-col="entidades" data-id="${e.id}">${ic('edit',16)}<span>Editar</span></button>`:''}</div>
  <div class="acts">
   <a class="act ${tel?'':'off'}" href="tel:${esc(telClean(tel))}">${ic('phone')}<span>Ligar</span></a>
   <a class="act ${e.telemovel?'':'off'}" href="https://wa.me/${esc(waNum(e.telemovel))}" target="_blank" rel="noopener">${ic('wa')}<span>WhatsApp</span></a>
@@ -781,7 +781,7 @@ const visRow=v=>rowH({col:'visitas',id:v.id,av:initials(entName(v.entidade)),avk
 const encRow=x=>rowH({col:'encomendas',id:x.id,title:entName(x.entidade),sub:[fD(x.data),(x.linhas||[]).length+' artigo'+((x.linhas||[]).length===1?'':'s'),x.entregarPor?'Entrega: '+nameOf(x.entregarPor):''].filter(Boolean).join(' · '),right:eur(docTotal(x)),badges:badge(x.estado||'Nova',toneEnc[x.estado]||'mute')});
 const propRow=x=>rowH({col:'propostas',id:x.id,title:entName(x.entidade),sub:[fD(x.data),x.validade?'válida até '+fD(x.validade):''].filter(Boolean).join(' · '),right:eur(docTotal(x)),badges:badge(x.estado||'Rascunho',toneProp[x.estado]||'mute')});
 const pedRow=x=>rowH({col:'pedidos',id:x.id,title:(x.tipo||'Pedido')+' · '+entName(x.entidade),sub:[x.agendado?'Agendado '+fD(x.agendado):fD(x.data),x.descricao].filter(Boolean).join(' — '),badges:badge(x.estado||'Aberto',tonePed[x.estado]||'mute')+(S.canWrite&&x.estado!=='Concluído'?`<button class="qa" data-act="pedNext" data-id="${x.id}">${EST_PED[EST_PED.indexOf(x.estado||'Aberto')+1]||'Concluído'}</button>`:'')});
-const avRow=x=>{const[s,t]=avencaStatus(x);return rowH({col:'avencas',id:x.id,title:entName(x.entidade),sub:[x.descricao,PERIOD[x.periodicidade]].filter(Boolean).join(' · '),right:eur(x.valor),badges:badge(s,t)+(S.canWrite&&x.ativa!==false?`<button class="qa" data-act="cobrar" data-id="${x.id}">Cobrar</button>`:'')})};
+const avRow=x=>{const[s,t]=avencaStatus(x);return rowH({col:'avencas',id:x.id,title:entName(x.entidade),sub:[x.descricao,PERIOD[x.periodicidade]].filter(Boolean).join(' · '),right:eur(x.valor),badges:badge(s,t)+(x.xdEstado==='por_criar'?badge('Por criar no XD','warn'):'')+(S.canWrite&&x.ativa!==false?`<button class="qa" data-act="cobrar" data-id="${x.id}">Cobrar</button>`:'')})};
 const pagRow=x=>rowH({col:'pagamentos',id:x.id,title:entName(x.entidade),sub:[fD(x.data),x.metodo,x.referente].filter(Boolean).join(' · '),right:eur(x.valor),badges:badge(EST_PAG[x.estado]||'—',tonePag[x.estado]||'mute')+(S.canWrite&&x.estado==='receber'?`<button class="qa" data-act="pagSt" data-id="${x.id}" data-c="recibo">Recebido</button>`:'')+(S.canWrite&&x.estado==='recibo'?`<button class="qa" data-act="pagSt" data-id="${x.id}" data-c="fechado">Recibo emitido</button>`:'')});
 const tarRow=x=>rowH({col:'tarefas',id:x.id,title:x.titulo,cls:x.feito?'done':'',extra:`<button class="chk ${x.feito?'on':''}" data-act="tgl" data-id="${x.id}" aria-label="Concluir">${ic('check',14)}</button>`,sub:[x.data?fD(x.data)+(x.hora?' '+x.hora:''):'Sem data',x.entidade?entName(x.entidade):'',nameOf(x.resp)].filter(Boolean).join(' · '),badges:x.prioridade==='alta'?badge('Alta','bad'):(x.data&&!x.feito&&x.data<TODAY()?badge('Atrasada','warn'):'')});
 const compRow=x=>rowH({col:'compras',id:x.id,title:x.fornecedor,sub:[fD(x.data),x.documento,x.descricao].filter(Boolean).join(' · '),right:eur(x.valor),badges:x.pago?badge('Pago','ok'):badge('Por pagar','warn')});
@@ -855,7 +855,7 @@ function openForm(col,id,preset){
  if(ex&&(col==='encomendas'||col==='propostas'))body+=`<div style="margin-top:16px">${aiBox(col,ex)}</div>`;
  const t=ex?(col==='entidades'?ex.nome:'Editar '+NOMES[col][0]):NOMES[col][1];
  openSheet(`<div class="sh"><h2>${esc(t)}</h2><button class="ib" data-act="close" aria-label="Fechar">${ic('x')}</button></div><div class="sb">${body}</div>
- <div class="sf">${ex&&!ro?`<button class="btn dng" data-act="del" type="button">Apagar</button>`:''}${ex&&col==='propostas'&&!ro?`<button class="btn" data-act="prop2enc" type="button">Converter em encomenda</button>`:''}${ex&&(col==='encomendas'||col==='propostas')?`<button class="btn" data-act="copydoc" type="button">${ic('copy',16)}Copiar texto</button>`:''}${ex&&col==='encomendas'&&!ro&&!['Entregue','Faturada','Cancelada'].includes(ex.estado)?`<button class="btn gold" data-act="encEntregue" type="button">Marcar como entregue</button>`:''}${ex&&col==='encomendas'&&!ro?`<button class="btn" data-act="repEnc2" type="button">Repetir encomenda</button>`:''}${ex&&col==='encomendas'&&!CFG.emailEncomendas?`<a class="btn" data-act="mailgo" href="${esc(encMail(ex).href)}">${ic("mail",16)}Enviar email</a>`:''}${ex&&col==='encomendas'&&!ro&&CFG.emailEncomendas?`<button class="btn" data-act="encEmail" type="button">Enviar email</button>`:''}<span class="grow"></span><button class="btn" data-act="close" type="button">Cancelar</button>${ro?'':`<button class="btn pri" data-act="saveform" type="button">Guardar</button>`}</div>`);
+ <div class="sf">${ex&&!ro?`<button class="btn dng" data-act="del" type="button">Apagar</button>`:''}${ex&&col==='propostas'&&!ro?`<button class="btn" data-act="prop2enc" type="button">Converter em encomenda</button>`:''}${ex&&(col==='encomendas'||col==='propostas')?`<button class="btn" data-act="copydoc" type="button">${ic('copy',16)}Copiar texto</button>`:''}${ex&&col==='avencas'&&!ro&&ex.xdEstado==='por_criar'?`<button class="btn" data-act="avXd" type="button">Enviar pedido ao XD</button><button class="btn" data-act="avXdOk" type="button">Já está criada no XD</button>`:''}${ex&&col==='encomendas'&&!ro&&!['Entregue','Faturada','Cancelada'].includes(ex.estado)?`<button class="btn gold" data-act="encEntregue" type="button">Marcar como entregue</button>`:''}${ex&&col==='encomendas'&&!ro?`<button class="btn" data-act="repEnc2" type="button">Repetir encomenda</button>`:''}${ex&&col==='encomendas'&&!CFG.emailEncomendas?`<a class="btn" data-act="mailgo" href="${esc(encMail(ex).href)}">${ic("mail",16)}Enviar email</a>`:''}${ex&&col==='encomendas'&&!ro&&CFG.emailEncomendas?`<button class="btn" data-act="encEmail" type="button">Enviar email</button>`:''}<span class="grow"></span><button class="btn" data-act="close" type="button">Cancelar</button>${ro?'':`<button class="btn pri" data-act="saveform" type="button">Guardar</button>`}</div>`);
  setTimeout(()=>{const f=$('#sheetc input:not([type=hidden]),#sheetc select');if(f&&!ex&&innerWidth>760)f.focus()},50);
 }
 async function saveForm(btn){
@@ -863,7 +863,7 @@ async function saveForm(btn){
  F[fm.col].forEach(f=>{const v=readF(f);vals[f.k]=v;if(f.req&&(v===''||v==null||(Array.isArray(v)&&!v.length)))miss.push(f.l)});
  if(fm.col==='visitas'||fm.col==='encomendas'||fm.col==='propostas'||fm.col==='pedidos'||fm.col==='avencas'||fm.col==='pagamentos'){const q=$('#f-entidade-q');if(q&&q.value.trim()&&!vals.entidade)miss.unshift('Cliente (escolha da lista)')}
  if(miss.length)return toast('Falta preencher: '+miss.join(', '));
- btn.disabled=true;const col=fm.col,wasNew=!fm.id;
+ btn.disabled=true;const col=fm.col,wasNew=!fm.id;if(wasNew&&col==='avencas')vals.xdEstado='por_criar';
  const id=await save(col,fm.id,vals);btn.disabled=false;if(!id)return;
  // efeitos secundários
  if(col==='visitas'){
@@ -873,6 +873,8 @@ async function saveForm(btn){
  if(fm.extra?.fromProp&&col==='encomendas')await patch('propostas',fm.extra.fromProp,{estado:'Aceite',encomenda:id});
  closeSheet();toast(wasNew?'Criado':'Guardado');
  if(wasNew&&col==='encomendas')encMailSheet(id);
+ if(wasNew&&col==='avencas'&&vals.entidade)xdSheet(vals.entidade,id);
+ if(wasNew&&col==='entidades'&&vals.estado==='cliente'&&!vals.codigoXd)setTimeout(()=>xdSheet(id),300);
  if(wasNew&&col==='entidades')go('ficha',{id});
 }
 
@@ -992,7 +994,11 @@ const ACT={
  saveform:(d,b)=>saveForm(b),
  del:async(d,b)=>{if(!b.dataset.armed){b.dataset.armed=1;b.textContent='Confirmar apagar';return}const fm=S.form;b.disabled=true;if(await remove(fm.col,fm.id)){closeSheet();toast('Apagado');if(fm.col==='entidades'&&S.view==='ficha')back()}},
  tgl:async d=>{const t=S.data.tarefas.get(d.id);if(t)await patch('tarefas',d.id,{feito:!t.feito})},
- conv:async d=>{if(await patch('entidades',d.id,{estado:d.c}))toast(d.c==='cliente'?'Convertido em cliente':'Passou a potencial')},
+ conv:async d=>{if(await patch('entidades',d.id,{estado:d.c})){toast(d.c==='cliente'?'Convertido em cliente':'Passou a potencial');if(d.c==='cliente'&&!ent(d.id)?.codigoXd)xdSheet(d.id)}},
+ xdgo:()=>{},
+ xdPed:d=>xdSheet(d.id),
+ avXd:()=>{const x=S.data.avencas.get(S.form.id);if(!x)return;closeSheet();xdSheet(x.entidade,x.id)},
+ avXdOk:async()=>{if(await patch('avencas',S.form.id,{xdEstado:'criada'})){closeSheet();toast('Marcada como criada no XD')}},
  pedNext:async d=>{const p=S.data.pedidos.get(d.id);if(!p)return;const n=EST_PED[EST_PED.indexOf(p.estado||'Aberto')+1]||'Concluído';if(await patch('pedidos',d.id,{estado:n}))toast('Pedido: '+n)},
  pagSt:async d=>{if(await patch('pagamentos',d.id,{estado:d.c}))toast(d.c==='recibo'?'Recebido. Falta emitir o recibo':'Recibo emitido')},
  cobrar:async d=>{const a=S.data.avencas.get(d.id);if(!a||!canAct())return;const pid=await save('pagamentos',null,{entidade:a.entidade,valor:+a.valor||0,data:TODAY(),estado:'receber',metodo:'',referente:'Avença · '+(a.descricao||'')+' · '+fD(a.proxima||TODAY()),avenca:a.id,notas:''});if(!pid)return;await patch('avencas',a.id,{proxima:addMonths(a.proxima||TODAY(),+a.periodicidade||1),ultimaCobranca:TODAY()});toast('Cobrança registada em Recebimentos')},
@@ -1050,7 +1056,7 @@ document.addEventListener('click',e=>{
  const b=e.target.closest('[data-act]');
  if(!e.target.closest('.pick'))document.querySelectorAll('.pkl').forEach(p=>p.hidden=true);
  if(!b)return;const a=b.dataset.act;if(!ACT[a])return;
- if(b.tagName==='A'){if(a==='mailgo')setTimeout(closeSheet,400);return}e.preventDefault();e.stopPropagation();ACT[a](b.dataset,b,e)});
+ if(b.tagName==='A'){if(a==='mailgo')setTimeout(closeSheet,400);if(a==='xdgo'){const now=new Date().toISOString();if(b.dataset.av)patch('avencas',b.dataset.av,{pedidoXd:now});else if(b.dataset.ent)patch('entidades',b.dataset.ent,{pedidoXd:now});setTimeout(closeSheet,400)}return}e.preventDefault();e.stopPropagation();ACT[a](b.dataset,b,e)});
 document.addEventListener('keydown',e=>{
  if(e.key==='Escape'&&!$('#sheet').hidden){closeSheet();return}
  const t=e.target;
@@ -1119,6 +1125,14 @@ function encMail(x){const e=ent(x.entidade)||{};const em=String(e.email||'').spl
  else{to=GERAL;subject=`Encomenda · ${nome}${num} · ${fDY(x.data)} · ${eur(t.total)}`;body=`Nova encomenda (cliente sem email na ficha).\n\n${cab}${e.telemovel||e.telefone?`\nContacto: ${e.telemovel||e.telefone}`:''}\n\n${resumo}${obs}${ass}`}
  const q=[cc&&'cc='+encodeURIComponent(cc),'subject='+encodeURIComponent(subject),'body='+encodeURIComponent(body)].filter(Boolean).join('&');
  return{href:`mailto:${to}?${q}`,to,cliente:!!em}}
+function xdMail(e,av){const nome=e.nome||'Cliente';
+ const cli=[`Cliente: ${nome}`,e.nif?`NIF: ${e.nif}`:'NIF: (falta)',e.morada?`Morada: ${e.morada}`:'',[e.cp,e.localidade].filter(Boolean).join(' '),e.contacto?`Contacto: ${e.contacto}`:'',e.telemovel?`Telemóvel: ${e.telemovel}`:'',e.telefone?`Telefone: ${e.telefone}`:'',e.email?`Email: ${e.email}`:'',(e.tipos||[]).length?`Tipo: ${(e.tipos||[]).map(k=>TIPOS[k]).join(', ')}`:'',e.codigoXd?`N.º cliente XD: ${e.codigoXd}`:'Cliente ainda não existe no XD: criar'].filter(Boolean).join('\n');
+ const a=av?`\n\nAvença a criar no XD:\nDescrição: ${av.descricao||''}\nValor por cobrança: ${eur(av.valor)}\nPeriodicidade: ${PERIOD[av.periodicidade]||av.periodicidade||''}\nPrimeira cobrança: ${fDY(av.proxima)}${av.fim?`\nFim do contrato: ${fDY(av.fim)}`:''}${av.notas?`\nNotas: ${av.notas}`:''}`:'';
+ const subject=`Criar no XD · ${av?(e.codigoXd?'Avença':'Cliente e avença'):'Cliente'} · ${nome}${e.nif?' · NIF '+e.nif:''}`;
+ const body=`Pedido registado no CRM por ${S.me?.name||''}.\n\n${cli}${a}\n\nDepois de criado no XD, o CRM liga-se sozinho pela próxima sincronização.`;
+ return `mailto:${GERAL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`}
+function xdSheet(entId,avId){const e=ent(entId);if(!e)return;const av=avId?S.data.avencas.get(avId):null;const href=xdMail(e,av);
+ openSheet(`<div class="sh"><h2>${av?'Avença guardada':'Cliente guardado'}</h2><button class="ib" data-act="close" aria-label="Fechar">${ic('x')}</button></div><div class="sb"><p>Enviar para <b>${GERAL}</b> o pedido para criar ${av?(e.codigoXd?'esta avença':'o cliente e a avença'):'o cliente'} no XD?</p><p class="note">${e.nif?'':'Atenção: a ficha não tem NIF. '}Fica marcado "Por criar no XD" até aparecer no XD.</p></div><div class="sf"><span class="grow"></span><button class="btn" data-act="close" type="button">Agora não</button><a class="btn pri" data-act="xdgo" data-ent="${entId}" data-av="${avId||''}" href="${esc(href)}">Enviar pedido</a></div>`)}
 function encMailSheet(id){const x=S.data.encomendas.get(id);if(!x)return;const m=encMail(x);
  openSheet(`<div class="sh"><h2>Encomenda guardada</h2><button class="ib" data-act="close" aria-label="Fechar">${ic('x')}</button></div><div class="sb"><p>${m.cliente?`Enviar a confirmação para <b>${esc(m.to)}</b>, com cópia para ${GERAL}?`:`Este cliente não tem email na ficha. A encomenda segue só para <b>${GERAL}</b>.`}</p><p class="note">${CFG.emailEncomendas?'O email sai de '+GERAL+'.':'Abre o seu programa de email com a mensagem já preenchida. Reveja e carregue em Enviar.'}</p></div><div class="sf"><span class="grow"></span><button class="btn" data-act="close" type="button">Agora não</button>${CFG.emailEncomendas?`<button class="btn pri" data-act="encEmail" data-id="${x.id}" type="button">Enviar email</button>`:`<a class="btn pri" data-act="mailgo" href="${esc(m.href)}">Abrir email</a>`}</div>`)}
 async function enviarEncEmail(id){
