@@ -516,6 +516,9 @@ const S={db:null,user:null,sample:null,assets:null,uid:null,me:null,canWrite:tru
  view:'inicio',params:{},hist:[],q:{},f:{},lim:{},cal:{month:TODAY().slice(0,7),day:TODAY(),quem:'eu'},
  form:null,chat:[],chatBusy:false,chatStream:'',chatCtl:null};
 const D=c=>[...S.data[c].values()];
+const XD_VENDA=['FT','FR','FS','ND','NC'];
+const xdLiq=d=>{const v=(d.linhas||[]).reduce((s,l)=>s+(+l.total||0),0);return d.tipo==='NC'?-Math.abs(v):v};
+const xdVendas=()=>D('xd_documentos').filter(d=>XD_VENDA.includes(d.tipo)&&d.data);
 const xdPend=id=>D('xd_documentos').filter(d=>d.entidade===id&&+d.pendente>0.005).sort((a,b)=>(a.vencimento||a.data||'').localeCompare(b.vencimento||b.data||''));
 const diasAtraso=d=>{const v=d.vencimento||d.data;if(!v)return 0;return Math.max(0,Math.floor((new Date(TODAY()+'T12:00')-new Date(v.slice(0,10)+'T12:00'))/864e5))};
 function xdContaH(id){const P=xdPend(id),tot=P.reduce((s,d)=>s+(+d.pendente||0),0),ligado=S.data.xd_documentos.size>0;
@@ -639,14 +642,25 @@ VIEWS.inicio=()=>loadingOr(()=>{
  const ents=D('entidades'),cli=ents.filter(e=>e.estado==='cliente').length,lds=ents.filter(e=>e.estado==='lead'||e.estado==='potencial').length;
  const total=COLS.reduce((s,c)=>s+(c==='equipa'?0:S.data[c].size),0);
  const h=new Date().getHours(),sal=h<13?'Bom dia':h<20?'Boa tarde':'Boa noite';
+ const XV=xdVendas(),temXd=XV.length>0;
+ const dia=t.slice(8,10),pmAte=pm+'-'+dia;
+ const xvHoje=XV.filter(d=>d.data===t),xvMes=XV.filter(d=>d.data.startsWith(m)),xvPm=XV.filter(d=>d.data.startsWith(pm)&&d.data<=pmAte);
+ const vHoje=xvHoje.reduce((s,d)=>s+xdLiq(d),0),vMes=xvMes.reduce((s,d)=>s+xdLiq(d),0),vPmAte=xvPm.reduce((s,d)=>s+xdLiq(d),0);
+ const dltX=vPmAte?Math.round((vMes-vPmAte)/vPmAte*100):null;
+ const pendXd=D('xd_documentos').filter(d=>+d.pendente>0.005),pendTot=pendXd.reduce((s,d)=>s+(+d.pendente||0),0),pendCli=new Set(pendXd.map(d=>d.codigo_xd||d.codigoXd)).size;
  const dlt=vpm?Math.round((vm-vpm)/vpm*100):null;
  let out=`${roBanner()}<div class="hello"><div class="eyebrow">${new Date().toLocaleDateString('pt-PT',{weekday:'long',day:'numeric',month:'long'})}</div><h1>${sal}${S.me?.name?', '+esc(S.me.name.split(' ')[0]):''}</h1></div>`;
  if(!total)out+=`<div class="panel welcome"><h2>O seu CRM está pronto.</h2><ol><li>Crie o primeiro cliente ou lead com o botão <b>+</b>.</li><li>Adicione os artigos ao catálogo para fazer encomendas e propostas.</li><li>Registe visitas, tarefas, avenças e pedidos de assistência.</li></ol><p class="note">Os clientes do XD Software podem ser importados depois, de uma só vez. Para experimentar já, carregue dados de exemplo e apague-os quando quiser.</p><div>${S.canWrite&&S.db?'<button class="btn gold" data-act="seed">Carregar dados de exemplo</button>':''}</div></div>`;
- const kpis=`<div class="kpis">
+ const kpiCli=`<button class="kpi" data-act="go" data-v="clientes"><span class="eyebrow">Clientes ativos</span><span class="v">${cli}</span><span class="s">${lds} leads e potenciais</span></button>`;
+ const kpis=temXd?`<div class="kpis">
+  <div class="kpi"><span class="eyebrow">Vendas de hoje</span><span class="v">${eur(vHoje)}</span><span class="s">${xvHoje.length} documento${xvHoje.length===1?'':'s'} no XD · sem IVA</span></div>
+  <div class="kpi"><span class="eyebrow">Vendas do mês</span><span class="v">${eur(vMes)}</span><span class="s">${dltX===null?'faturado no XD · sem IVA':`<span class="${dltX>=0?'up':'dn'}">${dltX>=0?'+':''}${dltX}%</span> vs. mesmo dia do mês anterior`}</span></div>
+  <div class="kpi ${pendTot>0.005?'hl':''}"><span class="eyebrow">Por receber</span><span class="v">${eur(pendTot)}</span><span class="s">pendentes no XD · ${pendCli} cliente${pendCli===1?'':'s'}</span></div>
+  ${kpiCli}</div>`:`<div class="kpis">
   <button class="kpi" data-act="go" data-v="encomendas"><span class="eyebrow">Vendas do mês</span><span class="v">${eur(vm)}</span><span class="s">${dlt===null?'Sem dados do mês anterior':`<span class="${dlt>=0?'up':'dn'}">${dlt>=0?'+':''}${dlt}%</span> vs. mês anterior`}</span></button>
   <button class="kpi ${rec.length?'hl':''}" data-act="pagf" data-c="Por receber"><span class="eyebrow">Por receber</span><span class="v">${eur(rec.reduce((s,p)=>s+(+p.valor||0),0))}</span><span class="s">${rec.length} pagamento${rec.length===1?'':'s'} pendente${rec.length===1?'':'s'}</span></button>
   <button class="kpi ${reci.length?'hl':''}" data-act="pagf" data-c="Recibo por emitir"><span class="eyebrow">Recibos por emitir</span><span class="v">${reci.length}</span><span class="s">${eur(reci.reduce((s,p)=>s+(+p.valor||0),0))} recebidos</span></button>
-  <button class="kpi" data-act="go" data-v="clientes"><span class="eyebrow">Clientes ativos</span><span class="v">${cli}</span><span class="s">${lds} leads e potenciais</span></button></div>`;
+  ${kpiCli}</div>`;
  const hoje=dayItems(t,'eu'),atr=overdue('eu');
  const att=attention();
  out+=`<div class="grid2"><div class="panel"><div class="ph"><h2>Hoje</h2><button class="lnk" data-act="go" data-v="agenda">Agenda</button></div>
@@ -658,11 +672,13 @@ VIEWS.inicio=()=>loadingOr(()=>{
  if(!S.verValores)return `<div class="pg">${out}</div>`;
  out+=kpis;
  // gráfico
- const months=[];for(let i=11;i>=0;i--){const k=addMonths(t.slice(0,8)+'01',-i).slice(0,7);months.push([k,enc.filter(e=>(e.data||'').startsWith(k)).reduce((s,e)=>s+docTotal(e),0)])}
- const yr=t.slice(0,4),ta={};enc.filter(e=>(e.data||'').startsWith(yr)).forEach(e=>(e.linhas||[]).forEach(l=>{const k=l.nome||'Sem nome';ta[k]=(ta[k]||0)+lineBase(l)}));
+ const months=[];for(let i=11;i>=0;i--){const k=addMonths(t.slice(0,8)+'01',-i).slice(0,7);months.push([k,temXd?XV.filter(d=>d.data.startsWith(k)).reduce((s,d)=>s+xdLiq(d),0):enc.filter(e=>(e.data||'').startsWith(k)).reduce((s,e)=>s+docTotal(e),0)])}
+ const yr=t.slice(0,4),ta={};
+ if(temXd)XV.filter(d=>d.data.startsWith(yr)).forEach(d=>(d.linhas||[]).forEach(l=>{const k=l.nome||'Sem nome';ta[k]=(ta[k]||0)+(+l.total||0)*(d.tipo==='NC'?-1:1)}));
+ else enc.filter(e=>(e.data||'').startsWith(yr)).forEach(e=>(e.linhas||[]).forEach(l=>{const k=l.nome||'Sem nome';ta[k]=(ta[k]||0)+lineBase(l)}));
  const top=Object.entries(ta).sort((a,b)=>b[1]-a[1]).slice(0,5);
  const porTipo=Object.keys(TIPOS).map(k=>[TIPOS[k],ents.filter(e=>e.estado==='cliente'&&(e.tipos||[]).includes(k)).length]);const mx=Math.max(1,...porTipo.map(x=>x[1]));
- out+=`<div class="grid2"><div class="panel"><div class="ph"><h2>Vendas</h2><span class="note">últimos 12 meses, com IVA</span></div><div class="pb">${chartSVG(months)}</div></div>
+ out+=`<div class="grid2"><div class="panel"><div class="ph"><h2>Vendas</h2><span class="note">${temXd?'últimos 12 meses, faturado no XD, sem IVA':'últimos 12 meses, com IVA'}</span></div><div class="pb">${chartSVG(months)}</div></div>
   <div class="panel"><div class="ph"><h2>Top artigos do ano</h2></div><div class="pb">${top.length?`<table class="tt"><thead><tr><th>Artigo</th><th>Valor s/ IVA</th></tr></thead><tbody>${top.map(([n,v])=>`<tr><td>${esc(n)}</td><td class="num">${eur(v)}</td></tr>`).join('')}</tbody></table>`:'<p class="note">Aparece quando houver encomendas este ano.</p>'}
   <div class="eyebrow" style="margin:18px 0 10px">Clientes por tipo</div><div class="bars">${porTipo.map(([n,v])=>`<div><div class="l"><span>${n}</span><b class="num">${v}</b></div><div class="t"><i style="width:${v/mx*100}%"></i></div></div>`).join('')}</div></div></div></div>`+xdTopH();
  return `<div class="pg">${out}</div>`;
