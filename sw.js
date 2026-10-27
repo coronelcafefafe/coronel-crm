@@ -1,5 +1,5 @@
 // Coronel CRM · service worker: guarda a app para abrir depressa; os dados vêm sempre do Supabase.
-const CACHE = "coronel-crm-v17";
+const CACHE = "coronel-crm-v18";
 const SHELL = ["./", "index.html", "config.js", "manifest.webmanifest", "icon-192.png", "icon-512.png"];
 
 self.addEventListener("install", e => {
