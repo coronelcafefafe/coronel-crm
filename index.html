@@ -327,6 +327,7 @@ table.tt{width:100%;border-collapse:collapse;font-size:13.5px}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script src="config.js"></script>
 <script src="maquinas.js"></script>
+<script src="extrato.js"></script>
 <script>
 "use strict";
 /* ================= utilidades ================= */
@@ -1221,6 +1222,7 @@ async function start(session){
  S.sample=CFG.claude===false?null:makeSample();S.assets=S.canWrite?{upload:uploadFoto}:null;schedule();
 }
 if(window.MAQ_INIT)MAQ_INIT();
+if(window.EXT_INIT)EXT_INIT();
 if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
 boot();
 </script>
