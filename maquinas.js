@@ -460,7 +460,7 @@ window.MAQ_INIT = function () {
     const ativas = D('maquinas').filter(m => m.entidade && m.estado !== 'armazem' && m.estado !== 'abate');
     const feitas = ativas.filter(m => ultimoAb(m.id) === TODAY());
     let L = ativas.map(m => ({ m, p: proxima(m), e: S.data.entidades.get(m.entidade) }))
-      .filter(x => (x.p && x.p <= ate && !(c === 'Hoje' && feitas.includes(x.m))) || (c === 'Hoje' && x.m.estado === 'parada'))
+      .filter(x => (x.p && x.p <= ate && !(c === 'Hoje' && feitas.includes(x.m))) || (c === 'Hoje' && x.m.estado === 'parada' && x.m.freq))
       .filter(x => match('rota', { ...x.m, ...(x.e || {}), numero: x.m.numero }, ['numero', 'nome', 'localidade', 'morada']));
     const zona = x => x.e?.zona || x.e?.localidade || 'Sem zona';
     L.sort((a, b) => zona(a).localeCompare(zona(b), 'pt') || ((a.m.ordem ?? 9e9) - (b.m.ordem ?? 9e9)) || String(a.p || '').localeCompare(String(b.p || '')) || (parseInt(a.m.numero) || 0) - (parseInt(b.m.numero) || 0));
