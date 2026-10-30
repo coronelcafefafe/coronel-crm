@@ -23,6 +23,7 @@ p{font-size:15px;line-height:1.5;margin:0 0 12px}
 .card{border:1px solid var(--line);border-radius:14px;padding:4px 16px;margin:20px 0 14px}
 .prod{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 0}
 .prod+.prod{border-top:1px solid var(--line)}
+.loja{font-family:'Cormorant Garamond',Georgia,serif;font-weight:600;font-size:22px;margin:22px 0 -12px}
 .prod b{display:block;font-weight:500;font-size:15px}
 .prod small{color:var(--ink2);font-size:13px}
 .step{display:flex;align-items:center;gap:6px;flex:none}
@@ -61,7 +62,9 @@ footer a{color:var(--ink2)}
   function msg(titulo, texto) { app.innerHTML = `<h1>${esc(titulo)}</h1><p class="sub">${texto}</p>`; }
 
   function desenhar() {
-    const q = a => (D.linhas.find(l => l.artigo === a) || {}).qt || 0;
+    const lojas = D.locais && D.locais.length ? D.locais : [''];
+    const q = (a, k) => (D.linhas.find(l => l.artigo === a && (l.local || '') === k) || {}).qt || 0;
+    const chave = (a, k) => esc(a + '|' + k);
     const resp = D.resposta === 'sim' ? `<div class="estado">Já recebemos o seu pedido. Pode alterá-lo até ${esc(D.limite)}.</div>`
       : D.resposta === 'nao' ? `<div class="estado">Indicou que não precisa desta vez. Se mudar de ideias, faça o pedido aqui até ${esc(D.limite)}.</div>` : '';
     if (!D.aberto) {
@@ -72,17 +75,17 @@ footer a{color:var(--ink2)}
       <p>${esc(D.cliente)}</p>
       <p class="sub">Entrega na <b style="color:#1D1D1F;font-weight:500">${esc(D.dia)}</b>. Pode fazer ou alterar o pedido até ${esc(D.limite)}.</p>
       ${resp}
-      <div class="card">${D.produtos.map(p => `<div class="prod"><div><b>${esc(p.nome)}</b><small>${p.passo > 1 ? 'Em múltiplos de ' + p.passo : esc(p.un)}</small></div>
-        <div class="step"><button type="button" data-a="${p.artigo}" data-d="-1" aria-label="Menos">−</button>
-        <input inputmode="numeric" pattern="[0-9]*" data-q="${p.artigo}" value="${q(p.artigo)}" aria-label="Quantidade de ${esc(p.nome)}">
-        <button type="button" data-a="${p.artigo}" data-d="1" aria-label="Mais">+</button></div></div>`).join('')}</div>
+      ${lojas.map(k => `${k ? `<h2 class="loja">Loja de ${esc(k)}</h2>` : ''}<div class="card">${D.produtos.map(p => `<div class="prod"><div><b>${esc(p.nome)}</b><small>${p.passo > 1 ? 'Em múltiplos de ' + p.passo : esc(p.un)}</small></div>
+        <div class="step"><button type="button" data-a="${chave(p.artigo, k)}" data-d="-1" aria-label="Menos">−</button>
+        <input inputmode="numeric" pattern="[0-9]*" data-q="${chave(p.artigo, k)}" value="${q(p.artigo, k)}" aria-label="Quantidade de ${esc(p.nome)}${k ? ' para ' + esc(k) : ''}">
+        <button type="button" data-a="${chave(p.artigo, k)}" data-d="1" aria-label="Mais">+</button></div></div>`).join('')}</div>`).join('')}
       <label class="nota" for="obs">Alguma nota para a entrega? (opcional)</label>
       <textarea id="obs" maxlength="500" placeholder="Ex.: deixar na receção">${esc(D.obs || '')}</textarea>
       <div class="erro" id="erro"></div>
       <button class="btn pri" id="ok">${D.resposta === 'sim' ? 'Atualizar pedido' : 'Confirmar pedido'}</button>
       <button class="btn" id="nao">Não preciso desta vez</button>`;
     app.querySelectorAll('[data-d]').forEach(b => b.onclick = () => {
-      const p = D.produtos.find(x => x.artigo === b.dataset.a), i = app.querySelector(`[data-q="${p.artigo}"]`);
+      const p = D.produtos.find(x => x.artigo === b.dataset.a.split('|')[0]), i = app.querySelector(`[data-q="${CSS.escape(b.dataset.a)}"]`);
       const v = Math.max(0, Math.min(p.max, (parseInt(i.value, 10) || 0) + (+b.dataset.d) * p.passo));
       i.value = v;
     });
@@ -91,7 +94,7 @@ footer a{color:var(--ink2)}
   }
 
   async function enviar(nada) {
-    const linhas = D.produtos.map(p => ({ artigo: p.artigo, qt: Math.max(0, parseInt(app.querySelector(`[data-q="${p.artigo}"]`).value, 10) || 0) }));
+    const linhas = [...app.querySelectorAll('[data-q]')].map(i => { const [artigo, local] = i.dataset.q.split('|'); return { artigo, local: local || undefined, qt: Math.max(0, parseInt(i.value, 10) || 0) }; });
     const erro = document.getElementById('erro');
     if (!nada && !linhas.some(l => l.qt > 0)) { erro.textContent = 'Indique pelo menos uma quantidade.'; return; }
     app.querySelectorAll('button').forEach(b => b.disabled = true);
@@ -101,7 +104,7 @@ footer a{color:var(--ink2)}
       if (r.ok) {
         if (nada) msg('Obrigado', `Fica registado que não precisa de água para ${esc(D.dia)}. Até à próxima.`);
         else {
-          const txt = linhas.filter(l => l.qt > 0).map(l => `${l.qt} × ${esc(D.produtos.find(p => p.artigo === l.artigo).nome)}`).join('<br>');
+          const txt = linhas.filter(l => l.qt > 0).map(l => `${l.local ? esc(l.local) + ': ' : ''}${l.qt} × ${esc(D.produtos.find(p => p.artigo === l.artigo).nome)}`).join('<br>');
           msg('Pedido recebido', `Entregamos na ${esc(D.dia)}:<br><b style="color:#1D1D1F;font-weight:500">${txt}</b><br><br>Pode alterar o pedido neste mesmo link até ${esc(D.limite)}.`);
         }
         if (D.demo) app.insertAdjacentHTML('beforeend', '<div class="estado">Isto é um exemplo: nada foi gravado.</div>');
