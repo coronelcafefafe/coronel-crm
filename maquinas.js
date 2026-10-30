@@ -130,31 +130,34 @@ window.MAQ_INIT = function () {
     by.forEach(g => g.L.sort((a, b) => (a.c ?? -1) - (b.c ?? -1) || String(a.data).localeCompare(String(b.data))));
     return [...by.values()];
   }
-  // duração de referência: a da ficha do artigo ou, se não houver, a média das avarias (todas as máquinas).
-  // Peças que ainda funcionam (ou foram trocadas por prevenção) e já passaram essa média também entram:
-  // enquanto não avariarem, a média vai subindo.
+  // Duração de referência de uma peça, sempre medida pelo contador DENTRO de cada máquina (troca → troca na mesma máquina).
+  // As durações das várias máquinas juntam-se depois numa média: primeiro só as do mesmo modelo (ex.: Brio 250);
+  // se esse modelo ainda não tiver avarias, usa todas as máquinas. A duração da ficha do artigo, se existir, manda.
+  // Peças que continuam a funcionar (ou foram trocadas por prevenção) acima da média também entram: a média vai subindo.
+  const modeloN = mid => String(M(mid)?.modelo || '').trim().toLowerCase().replace(/\s+/g, ' ');
   let vidaCache = null, vidaKey = '';
-  function vidaRef(artigo) {
+  function vidaRef(artigo, mid) {
     const a = art(artigo); if (a && +a.vidaServicos > 0) return { v: +a.vidaServicos, fonte: 'ficha' };
-    let key = S.data.stock_mov.size + '|' + S.data.maq_assist.size + '|' + S.data.maq_leituras.size; S.data.maq_assist.forEach(x => { key += '|' + (x.contador ?? '') + (x.preventiva ? 'p' : ''); });
+    let key = S.data.stock_mov.size + '|' + S.data.maq_assist.size + '|' + S.data.maq_leituras.size + '|' + S.data.maquinas.size; S.data.maq_assist.forEach(x => { key += '|' + (x.contador ?? '') + (x.preventiva ? 'p' : ''); }); S.data.maquinas.forEach(x => { key += '|' + (x.modelo || ''); });
     if (!vidaCache || vidaKey !== key) {
       vidaKey = key; vidaCache = new Map();
-      const get = id => { if (!vidaCache.has(id)) vidaCache.set(id, { fails: [], cens: [] }); return vidaCache.get(id); };
+      const get = k => { if (!vidaCache.has(k)) vidaCache.set(k, { fails: [], cens: [] }); return vidaCache.get(k); };
       trocas(null).forEach(g => {
-        const o = get(g.artigo);
-        for (let i = 1; i < g.L.length; i++) { const p = g.L[i - 1], q = g.L[i]; if (p.c == null || q.c == null || q.c <= p.c) continue; (q.prev ? o.cens : o.fails).push(q.c - p.c); }
+        const md = modeloN(g.maq), alvos = [get('*|' + g.artigo)].concat(md ? [get(md + '|' + g.artigo)] : []);
+        const add = (t, v) => alvos.forEach(o => o[t].push(v));
+        for (let i = 1; i < g.L.length; i++) { const p = g.L[i - 1], q = g.L[i]; if (p.c == null || q.c == null || q.c <= p.c) continue; add(q.prev ? 'cens' : 'fails', q.c - p.c); }
         const ult = [...g.L].reverse().find(x => x.c != null), at = contadorAtual(g.maq);
-        if (ult && at && at.c > ult.c) o.cens.push(at.c - ult.c);
+        if (ult && at && at.c > ult.c) add('cens', at.c - ult.c);
       });
     }
-    const o = vidaCache.get(artigo); if (!o || !o.fails.length) return null;
-    const m = o.fails.reduce((s, x) => s + x, 0) / o.fails.length, acima = o.cens.filter(x => x > m), all = o.fails.concat(acima);
-    return { v: Math.round(all.reduce((s, x) => s + x, 0) / all.length), fonte: 'media', n: o.fails.length, acima: acima.length };
+    const md = mid ? modeloN(mid) : '';
+    const calc = (o, fonte) => { if (!o || !o.fails.length) return null; const m = o.fails.reduce((s, x) => s + x, 0) / o.fails.length, acima = o.cens.filter(x => x > m), all = o.fails.concat(acima); return { v: Math.round(all.reduce((s, x) => s + x, 0) / all.length), fonte, n: o.fails.length, acima: acima.length, modelo: M(mid)?.modelo || '' }; };
+    return (md && calc(vidaCache.get(md + '|' + artigo), 'modelo')) || calc(vidaCache.get('*|' + artigo), 'geral');
   }
   function pecasEstado(mid) {
     const atual = contadorAtual(mid);
     return trocas(mid).map(g => {
-      const ult = [...g.L].reverse().find(x => x.c != null), ref = vidaRef(g.artigo);
+      const ult = [...g.L].reverse().find(x => x.c != null), ref = vidaRef(g.artigo, mid);
       const hist = []; for (let i = 1; i < g.L.length; i++) { const p = g.L[i - 1], q = g.L[i]; if (p.c != null && q.c != null && q.c > p.c) hist.push({ de: p.c, a: q.c, d: q.c - p.c, prev: q.prev }); }
       let prox = null, falta = null, est = '';
       if (ult && ref) { prox = ult.c + ref.v; if (atual) { falta = prox - atual.c; est = falta <= 0 ? 'ja' : falta <= Math.max(500, ref.v * 0.1) ? 'breve' : ''; } }
@@ -166,12 +169,12 @@ window.MAQ_INIT = function () {
     const L = pecasEstado(m.id), atual = contadorAtual(m.id);
     const row = x => { const a = art(x.artigo);
       const sub = [x.ult ? `posta aos ${nF(x.ult.c)} serviços (${fD(x.ult.data)})` : 'troca sem contador registado',
-        x.ref ? `dura ~${nF(x.ref.v)}${x.ref.fonte === 'media' ? ` (${x.ref.n} avaria${x.ref.n === 1 ? '' : 's'}${x.ref.acima ? `, ${x.ref.acima} peça${x.ref.acima === 1 ? '' : 's'} acima da média` : ''}${x.ref.n < 3 ? '; estimativa provisória' : ''})` : ' (ficha do artigo)'}` : (x.ult && atual && atual.c > x.ult.c ? `a funcionar há ${nF(atual.c - x.ult.c)} serviços; ainda sem avarias para calcular a duração` : 'duração ainda desconhecida'),
+        x.ref ? `dura ~${nF(x.ref.v)}${x.ref.fonte === 'ficha' ? ' (ficha do artigo)' : ` (média ${x.ref.fonte === 'modelo' ? 'nas ' + x.ref.modelo : 'de todas as máquinas'}: ${x.ref.n} avaria${x.ref.n === 1 ? '' : 's'}${x.ref.acima ? `, ${x.ref.acima} peça${x.ref.acima === 1 ? '' : 's'} acima da média` : ''}${x.ref.n < 3 ? '; provisória' : ''})`}` : (x.ult && atual && atual.c > x.ult.c ? `a funcionar há ${nF(atual.c - x.ult.c)} serviços; ainda sem avarias para calcular a duração` : 'duração ainda desconhecida'),
         x.hist.length ? 'histórico: ' + x.hist.map(h => `${nF(h.de)}→${nF(h.a)} = ${nF(h.d)}${h.prev ? ' (preventiva)' : ''}`).join('; ') : ''].filter(Boolean).join(' · ');
       const dir = x.prox == null ? '' : `<span class="num">troca aos ${nF(x.prox)}</span>${x.falta != null ? `<span class="note">${x.falta <= 0 ? `passou ${nF(-x.falta)}` : `faltam ${nF(x.falta)}`}</span>` : ''}`;
       return `<div class="row" style="cursor:default"><span class="rt"><span class="r1">${esc(a?.nome || 'Peça')}</span><span class="r2" style="white-space:normal">${esc(sub)}</span></span><span class="rr">${x.est === 'ja' ? badge('Trocar já', 'bad') : x.est === 'breve' ? badge('Trocar em breve', 'gold') : ''}${dir}</span></div>`; };
     return `<div class="panel" style="margin-top:14px"><div class="ph"><h2>Peças e duração</h2><span class="grow"></span>${S.canWrite ? `<button class="btn sm" data-act="maqContador" data-id="${m.id}">Registar contador</button>` : ''}</div>
-      <p class="note" style="margin:0 16px 8px">${atual ? `Contador atual: <b>${nF(atual.c)}</b> serviços (lido ${esc(fD(atual.data))}).` : 'Ainda sem leitura do contador de serviços.'} A duração é a média entre avarias da mesma peça. Peças que continuam a funcionar acima dessa média puxam-na para cima; se souber a duração do fabricante, escreva-a na ficha do artigo.</p>
+      <p class="note" style="margin:0 16px 8px">${atual ? `Contador atual: <b>${nF(atual.c)}</b> serviços (lido ${esc(fD(atual.data))}).` : 'Ainda sem leitura do contador de serviços.'} A duração mede-se pelo contador em cada máquina, de troca a troca, e faz-se a média das máquinas do mesmo modelo (ou de todas, se o modelo ainda não tiver avarias). Peças que continuam a funcionar acima da média puxam-na para cima.</p>
       ${L.length ? L.map(row).join('') : '<div class="empty"><b>Sem peças trocadas</b>As peças das assistências aparecem aqui, com o contador em que foram postas.</div>'}</div>`;
   }
 
