@@ -31,6 +31,7 @@ window.MAQ_INIT = function () {
     { k: 'freq', l: 'Abastecimento', t: 'sel', o: FREQ },
     { k: 'ordem', l: 'Ordem na rota (opcional)', t: 'num' },
     { k: 'dias', l: 'Dias de visita (opcional)', t: 'multi', o: DIAS, full: 1 },
+    { k: 'semContador', l: 'Sem contador de serviços (avariado): não conta para as médias das peças', t: 'bool', full: 1 },
     { k: 'notas', l: 'Notas', t: 'area', full: 1 },
   ];
   F.artigos.push(
@@ -114,7 +115,9 @@ window.MAQ_INIT = function () {
 
   /* ---------- contador de serviços e duração das peças ---------- */
   const nF = n => Math.round(+n || 0).toLocaleString('pt-PT');
+  const semCont = mid => !!M(mid)?.semContador;
   function contadorAtual(mid) {
+    if (semCont(mid)) return null;
     let best = null;
     const ver = (c, data) => { if (c == null || c === '') return; c = +c; if (!best || c > best.c) best = { c, data }; };
     D('maq_leituras').forEach(l => { if (l.maquina === mid) ver(l.contador, l.data); });
@@ -146,6 +149,7 @@ window.MAQ_INIT = function () {
       vidaKey = key; vidaCache = new Map();
       const get = k => { if (!vidaCache.has(k)) vidaCache.set(k, { fails: [], cens: [] }); return vidaCache.get(k); };
       trocas(null).forEach(g => {
+        if (semCont(g.maq)) return;
         const md = modeloN(g.maq), alvos = [get('*|' + g.artigo)].concat(md ? [get(md + '|' + g.artigo)] : []);
         const add = (t, v) => alvos.forEach(o => o[t].push(v));
         for (let i = 1; i < g.L.length; i++) { const p = g.L[i - 1], q = g.L[i]; if (p.c == null || q.c == null || q.c <= p.c) continue; add(q.prev ? 'cens' : 'fails', q.c - p.c); }
@@ -176,8 +180,8 @@ window.MAQ_INIT = function () {
         x.hist.length ? 'histórico: ' + x.hist.map(h => `${nF(h.de)}→${nF(h.a)} = ${nF(h.d)}${h.prev ? ' (preventiva)' : ''}`).join('; ') : ''].filter(Boolean).join(' · ');
       const dir = x.prox == null ? '' : `<span class="num">troca aos ${nF(x.prox)}</span>${x.falta != null ? `<span class="note">${x.falta <= 0 ? `passou ${nF(-x.falta)}` : `faltam ${nF(x.falta)}`}</span>` : ''}`;
       return `<div class="row" style="cursor:default"><span class="rt"><span class="r1">${esc(a?.nome || 'Peça')}</span><span class="r2" style="white-space:normal">${esc(sub)}</span></span><span class="rr">${x.est === 'ja' ? badge('Trocar já', 'bad') : x.est === 'breve' ? badge('Trocar em breve', 'gold') : ''}${dir}</span></div>`; };
-    return `<div class="panel" style="margin-top:14px"><div class="ph"><h2>Peças e duração</h2><span class="grow"></span>${S.canWrite ? `<button class="btn sm" data-act="maqContador" data-id="${m.id}">Registar contador</button>` : ''}</div>
-      <p class="note" style="margin:0 16px 8px">${atual ? `Contador atual: <b>${nF(atual.c)}</b> serviços (lido ${esc(fD(atual.data))}).` : 'Ainda sem leitura do contador de serviços.'} A duração mede-se pelo contador em cada máquina, de troca a troca, e faz-se a média das máquinas do mesmo modelo (ou de todas, se o modelo ainda não tiver avarias). Peças que continuam a funcionar acima da média puxam-na para cima.</p>
+    return `<div class="panel" style="margin-top:14px"><div class="ph"><h2>Peças e duração</h2><span class="grow"></span>${S.canWrite && !semCont(m.id) ? `<button class="btn sm" data-act="maqContador" data-id="${m.id}">Registar contador</button>` : ''}</div>
+      <p class="note" style="margin:0 16px 8px">${atual ? `Contador atual: <b>${nF(atual.c)}</b> serviços (lido ${esc(fD(atual.data))}).` : (semCont(m.id) ? '<b>Máquina sem contador de serviços</b>: não entra nas médias e não tem previsão de trocas.' : 'Ainda sem leitura do contador de serviços.')} A duração mede-se pelo contador em cada máquina, de troca a troca, e faz-se a média das máquinas do mesmo modelo (ou de todas, se o modelo ainda não tiver avarias). Peças que continuam a funcionar acima da média puxam-na para cima.</p>
       ${L.length ? L.map(row).join('') : '<div class="empty"><b>Sem peças trocadas</b>As peças das assistências aparecem aqui, com o contador em que foram postas.</div>'}</div>`;
   }
 
@@ -249,7 +253,7 @@ window.MAQ_INIT = function () {
     return `<div class="panel" style="margin-top:14px;border-color:var(--gold,#C4A052)"><div class="ph"><h2>Assistência em curso</h2><span class="note">desde ${a.inicio ? new Date(a.inicio).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' }) : fD(a.data)} · ${min} min</span></div><div class="pb">
       <div class="fg"><div class="fld full"><label for="as-avaria">Avaria</label><input id="as-avaria" data-as="${a.id}" data-k="avaria" class="inp" value="${esc(dr(a, 'avaria'))}" placeholder="O que a máquina tinha (1 linha)"></div>
       <div class="fld full"><label for="as-sol">O que foi feito</label><input id="as-sol" data-as="${a.id}" data-k="solucao" class="inp" value="${esc(dr(a, 'solucao'))}" placeholder="Ex.: troca da bomba, limpeza do misturador"></div>
-      <div class="fld"><label for="as-cont">Contador de serviços</label><input id="as-cont" data-as="${a.id}" data-k="contador" data-num="1" type="number" inputmode="numeric" min="0" class="inp" value="${esc(dr(a, 'contador'))}" placeholder="${contadorAtual(a.maquina) ? 'último: ' + nF(contadorAtual(a.maquina).c) : 'Ex.: 14000'}"></div>
+      ${semCont(a.maquina) ? '' : `<div class="fld"><label for="as-cont">Contador de serviços</label><input id="as-cont" data-as="${a.id}" data-k="contador" data-num="1" type="number" inputmode="numeric" min="0" class="inp" value="${esc(dr(a, 'contador'))}" placeholder="${contadorAtual(a.maquina) ? 'último: ' + nF(contadorAtual(a.maquina).c) : 'Ex.: 14000'}"></div>`}
       <div class="fld" style="align-self:end"><label class="tog"><input id="as-prev" type="checkbox" data-as="${a.id}" data-k="preventiva" ${a.preventiva ? 'checked' : ''}><span>Troca preventiva (a peça ainda não tinha avariado)</span></label></div></div>
       <div class="eyebrow" style="margin:14px 0 6px">Peças usadas</div>
       ${pec.length ? `<table class="tt"><tbody>${pec.map(x => `<tr><td>${esc(art(x.artigo)?.nome || 'Artigo')}</td><td class="num">${+x.qt}</td>${S.verValores ? `<td class="num">${x.custo != null ? eur(x.custo * x.qt) : '—'}</td>` : ''}</tr>`).join('')}</tbody></table>` : '<p class="note" style="margin:0">Ainda sem peças.</p>'}
@@ -308,7 +312,7 @@ window.MAQ_INIT = function () {
     <div class="mq-grid">${L.map(a => { const q = +c.items[a.id] || 0; return `<div class="mq-it ${q ? 'on' : ''}">
       <div data-act="mqAdd" data-id="${a.id}" data-c="1"><div class="ph-img">${a.foto ? `<img src="${esc(fotoUrl(a.foto))}" alt="" loading="lazy">` : esc(initials(a.nome))}</div><div class="nm">${esc(a.nome)}</div></div>
       ${q ? `<span class="mq-q ${q < 0 ? 'neg' : ''}" data-act="mqSet" data-id="${a.id}">${q}</span><div class="mq-pm"><button data-act="mqAdd" data-id="${a.id}" data-c="-1" aria-label="Menos">−</button><button data-act="mqAdd" data-id="${a.id}" data-c="1" aria-label="Mais">+</button></div>` : ''}</div>` }).join('') || '<p class="note">Nenhum produto. Procure pelo nome ou marque os artigos "Aparece no abastecimento" no catálogo.</p>'}</div>
-    ${c.maq && (c.modo === 'abastecimento' || c.modo === 'retirada') ? `<div class="fld" style="margin-top:12px;max-width:260px"><label for="mq-cont">Contador de serviços (opcional)</label><input id="mq-cont" type="number" inputmode="numeric" min="0" class="inp" value="${esc(c.cont || '')}" data-mqc="1" placeholder="${contadorAtual(c.maq) ? 'último: ' + nF(contadorAtual(c.maq).c) : 'Ex.: 14000'}"></div>` : ''}
+    ${c.maq && !semCont(c.maq) && (c.modo === 'abastecimento' || c.modo === 'retirada') ? `<div class="fld" style="margin-top:12px;max-width:260px"><label for="mq-cont">Contador de serviços (opcional)</label><input id="mq-cont" type="number" inputmode="numeric" min="0" class="inp" value="${esc(c.cont || '')}" data-mqc="1" placeholder="${contadorAtual(c.maq) ? 'último: ' + nF(contadorAtual(c.maq).c) : 'Ex.: 14000'}"></div>` : ''}
     <div class="mq-bar"><span class="note"><b>${n}</b> produto${n === 1 ? '' : 's'} · <b>${un}</b> un.${S.verValores && cst ? ` · custo ${eur(cst)}` : ''}</span><span class="grow"></span><button class="btn" data-act="close">Cancelar</button><button class="btn pri" data-act="mqOk" ${n ? '' : 'disabled'}>${MODOS[c.modo][1]}</button></div>`;
   }
   function cartOpen(modo, maq, assist) {
@@ -362,7 +366,7 @@ window.MAQ_INIT = function () {
       const a = S.data.maq_assist.get(d.id); if (!a) return;
       const fim = new Date(), min = a.inicio ? Math.max(1, Math.round((fim - new Date(a.inicio)) / 60000)) : (a.minutos || null);
       let cont = $('#as-cont') ? asVal($('#as-cont')) : (a.contador ?? null);
-      if (cont == null && D('stock_mov').some(x => x.assist === a.id)) {
+      if (cont == null && !semCont(a.maquina) && D('stock_mov').some(x => x.assist === a.id)) {
         const c = prompt('Contador de serviços da máquina (para saber quanto dura cada peça). Deixe vazio se não souber.', '');
         if (c === null) return; cont = c.trim() === '' ? null : Math.max(0, parseInt(c) || 0);
       }
