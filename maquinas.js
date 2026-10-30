@@ -6,6 +6,8 @@ window.MAQ_INIT = function () {
   const FREQ_D = { '3s': 2, '2s': 3, '1s': 7, '15d': 14, '1m': 30 };
   const DIAS = { '1': 'Segunda', '2': 'Terça', '3': 'Quarta', '4': 'Quinta', '5': 'Sexta', '6': 'Sábado' };
   const DIA_C = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+  const TIPO_M = { vending_cafe: 'Vending café', vending_comida: 'Vending comida', cafe: 'Máquina de café' };
+  const tipoT = m => TIPO_M[m?.tipo] || (m?.tipo === 'vending' ? 'Vending' : 'Máquina');
   const NOVAS = ['maquinas', 'maq_local', 'maq_assist', 'stock_mov', 'maq_fat', 'maq_leituras'];
   NOVAS.forEach(c => { if (!COLS.includes(c)) COLS.push(c); S.data[c] = new Map(); });
 
@@ -21,7 +23,7 @@ window.MAQ_INIT = function () {
   NOMES.maquinas = ['máquina', 'Nova máquina'];
   F.maquinas = [
     { k: 'numero', l: 'Número da máquina', t: 'text', req: 1, ph: 'Ex.: 15' },
-    { k: 'tipo', l: 'Tipo', t: 'sel', o: { vending: 'Vending', cafe: 'Café' }, req: 1, def: 'vending' },
+    { k: 'tipo', l: 'Tipo', t: 'sel', o: TIPO_M, req: 1, def: 'vending_cafe' },
     { k: 'modelo', l: 'Modelo', t: 'text', ph: 'Ex.: Necta Kikko' },
     { k: 'nSerie', l: 'N.º de série', t: 'text' },
     { k: 'estado', l: 'Estado', t: 'sel', o: { armazem: 'No armazém', ativa: 'Ativa (num cliente)', parada: 'Parada', abate: 'Abatida' }, req: 1, def: 'armazem' },
@@ -180,10 +182,10 @@ window.MAQ_INIT = function () {
 
   /* ---------- lista de máquinas ---------- */
   VIEWS.maquinas = () => loadingOr(() => {
-    const chips = ['Todas', 'Vending', 'Café', 'Paradas', 'Em atraso', 'Sem rota', 'No armazém'], c = S.f.maquinas ?? chips[0];
+    const chips = ['Todas', 'Vending café', 'Vending comida', 'Máquina de café', 'Paradas', 'Em atraso', 'Sem rota', 'No armazém'], c = S.f.maquinas ?? chips[0];
     const per = S.f.maqper || 'mes';
     let L = D('maquinas').filter(m => m.estado !== 'abate' || c === 'Todas')
-      .filter(m => c === 'Todas' || (c === 'Vending' ? m.tipo === 'vending' : c === 'Café' ? m.tipo === 'cafe' : c === 'Paradas' ? m.estado === 'parada' : c === 'Em atraso' ? (proxima(m) || '9') < TODAY() : c === 'Sem rota' ? (m.entidade && !m.freq) : !m.entidade))
+      .filter(m => c === 'Todas' || (Object.values(TIPO_M).includes(c) ? tipoT(m) === c : c === 'Paradas' ? m.estado === 'parada' : c === 'Em atraso' ? (proxima(m) || '9') < TODAY() : c === 'Sem rota' ? (m.entidade && !m.freq) : !m.entidade))
       .filter(m => match('maquinas', { ...m, entidade: m.entidade }, ['numero', 'modelo', 'nSerie', 'entidade']));
     L.sort((a, b) => (parseInt(a.numero) || 9e9) - (parseInt(b.numero) || 9e9) || String(a.numero).localeCompare(String(b.numero)));
     const R = S.verValores ? new Map(L.map(m => [m.id, rent(m.id, per)])) : null;
@@ -194,7 +196,7 @@ window.MAQ_INIT = function () {
       <div class="chips">${chips.map(x => `<button class="chipb ${x === c ? 'on' : ''}" data-act="chip" data-v="maquinas" data-c="${esc(x)}">${esc(x)}</button>`).join('')}</div>
       ${S.verValores ? `<div class="chips">${PER.map(([k, t]) => `<button class="chipb ${k === per ? 'on' : ''}" data-act="maqPer" data-c="${k}">${t}</button>`).join('')}</div>` : ''}</div>`;
     const sum = `<p class="note" style="margin:0 0 10px"><b>${L.length}</b> máquina${L.length === 1 ? '' : 's'}${tot ? ` · faturado <b>${eur(tot.fat)}</b> · resultado <b>${eur(tot.res)}</b>` : ''}. Leia o QR colado na máquina para abrir a ficha diretamente.</p>`;
-    const row = m => rowH({ act: 'maqOpen', id: m.id, av: m.numero, avk: 1, title: `Máquina ${m.numero}${m.modelo ? ' · ' + m.modelo : ''}`, sub: `${m.tipo === 'cafe' ? 'Café' : 'Vending'} · ${local(m)}${m.freq ? ' · ' + FREQ[m.freq].toLowerCase() : ''}`, right: R ? eur(R.get(m.id).res) : undefined, badges: estB(m) + visitaB(m) + pecaB(m.id) });
+    const row = m => rowH({ act: 'maqOpen', id: m.id, av: m.numero, avk: 1, title: `Máquina ${m.numero}${m.modelo ? ' · ' + m.modelo : ''}`, sub: `${tipoT(m)} · ${local(m)}${m.freq ? ' · ' + FREQ[m.freq].toLowerCase() : ''}`, right: R ? eur(R.get(m.id).res) : undefined, badges: estB(m) + visitaB(m) + pecaB(m.id) });
     return `<div class="pg">${roBanner()}${top}${sum}${listBlock('maquinas', L, row, '<b>Sem máquinas</b>Registe as máquinas com o número que têm (ou vão ter) na etiqueta QR.')}</div>`;
   });
 
@@ -211,7 +213,7 @@ window.MAQ_INIT = function () {
     let h = `<div class="pg">${roBanner()}
     <div class="panel"><div class="pb" style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
       <div class="mq-big">${esc(m.numero)}</div>
-      <div style="flex:1;min-width:180px"><div class="eyebrow">${m.tipo === 'cafe' ? 'Máquina de café' : 'Máquina de vending'}${m.modelo ? ' · ' + esc(m.modelo) : ''}</div>
+      <div style="flex:1;min-width:180px"><div class="eyebrow">${esc(tipoT(m))}${m.modelo ? ' · ' + esc(m.modelo) : ''}</div>
       <div style="font-size:17px;margin-top:2px">${esc(local(m))}</div>${m.entidade ? `<button class="lnk" style="padding:0;margin-top:2px" data-act="ficha" data-id="${m.entidade}">Ver ficha do cliente</button>` : ''}
       ${m.nSerie ? `<div class="note">N.º de série ${esc(m.nSerie)}</div>` : ''}
       ${contadorAtual(m.id) ? `<div class="note">Contador: <b>${nF(contadorAtual(m.id).c)}</b> serviços (${esc(fD(contadorAtual(m.id).data))})</div>` : ''}
