@@ -514,14 +514,32 @@ window.MAQ_INIT = function () {
   VIEWS.maqqr = () => `<div class="pg"><div class="panel"><div class="ph"><h2>Etiquetas QR das máquinas</h2></div><div class="pb">
     <p class="note" style="margin-top:0">Cada etiqueta abre a ficha da máquina com esse número. Pode imprimir números que ainda não estão registados: ao ler o QR pela primeira vez, o CRM pergunta se quer registar a máquina.</p>
     <div class="fg"><div class="fld"><label for="qr-de">Do número</label><input id="qr-de" type="number" class="inp" value="1"></div><div class="fld"><label for="qr-ate">Até ao número</label><input id="qr-ate" type="number" class="inp" value="60"></div>
-    <div class="fld full"><label for="qr-lista">Ou só estes números (separados por vírgulas)</label><input id="qr-lista" class="inp" placeholder="Ex.: 3, 15, 22"></div></div>
+    <div class="fld full"><label for="qr-lista">Ou só estes números (separados por vírgulas)</label><input id="qr-lista" class="inp" placeholder="Ex.: 3, 15, 22"></div>
+    <div class="fld full"><label for="qr-fmt">Formato</label><select id="qr-fmt" class="inp">${[['a6', 'A6 autocolante: uma etiqueta grande por folha'], ['a4', 'A4: 15 etiquetas por folha']].map(([k, t]) => `<option value="${k}" ${qrFmt() === k ? 'selected' : ''}>${t}</option>`).join('')}</select></div></div>
     <div style="margin-top:14px"><button class="btn pri" data-act="qrPrint">${ic('qr', 18)}Criar etiquetas para imprimir</button></div></div></div></div>`;
+  function qrFmt() { try { return localStorage.getItem('maqQrFmt') || 'a6'; } catch (_) { return 'a6'; } }
   ACT.qrPrint = async () => {
+    const fmt = $('#qr-fmt')?.value || 'a6'; try { localStorage.setItem('maqQrFmt', fmt); } catch (_) { }
     let nums = ($('#qr-lista')?.value || '').split(/[,;\s]+/).map(s => s.trim()).filter(Boolean);
     if (!nums.length) { const a = parseInt($('#qr-de')?.value) || 1, b = parseInt($('#qr-ate')?.value) || a; for (let i = a; i <= Math.min(b, a + 199); i++) nums.push(String(i)); }
     const w = window.open('', '_blank'); if (!w) return toast('O navegador bloqueou a janela. Permita janelas para este site.');
     try { await loadQR(); } catch (_) { w.close(); return toast('Sem ligação para gerar os QR.'); }
     const svg = n => { const q = qrcode(0, 'M'); q.addData(QR_URL(n)); q.make(); return q.createSvgTag({ cellSize: 4, margin: 0, scalable: true }); };
+    const limpa = n => String(n).replace(/[<>&]/g, '');
+    if (fmt === 'a6') {
+      w.document.write(`<!doctype html><html lang="pt-PT"><head><meta charset="utf-8"><title>Etiquetas QR A6 · Coronel Café</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500&family=Hanken+Grotesk:wght@400;500&display=swap" rel="stylesheet">
+<style>@page{size:105mm 148mm;margin:0}*{box-sizing:border-box}body{margin:0;font-family:'Hanken Grotesk',Arial,sans-serif;color:#1D1D1F;background:#fff}
+.e{width:105mm;height:148mm;padding:8mm 8mm 7mm;display:flex;flex-direction:column;align-items:center;justify-content:space-between;text-align:center;break-after:page;page-break-after:always;overflow:hidden}
+.e:last-child{break-after:auto;page-break-after:auto}
+.b{font-size:9pt;color:#6E6E73;letter-spacing:.18em;text-transform:uppercase}.r{height:.4mm;background:#C4A052;width:22mm;margin:2.5mm auto 0}
+.l{font-size:9pt;color:#6E6E73;letter-spacing:.14em;text-transform:uppercase;margin-top:2mm}
+.n{font-family:'Cormorant Garamond',serif;font-size:96pt;line-height:.9;margin:0}
+.e svg{width:66mm;height:66mm;display:block}.t{font-size:9pt;color:#6E6E73;line-height:1.35}
+.p{text-align:center;margin:6mm 0;font-size:10pt}@media print{.p{display:none}}@media screen{body{background:#F2F2F4}.e{background:#fff;margin:6mm auto;border:1px solid #E5E5EA}}</style></head><body>
+<div class="p"><button onclick="print()">Imprimir</button> · imprima em tamanho A6, sem ajustar à página</div>${nums.map(n => `<div class="e"><div><div class="b">Coronel Café</div><div class="r"></div></div><div><div class="l">Máquina</div><div class="n">${limpa(n)}</div></div>${svg(n)}<div class="t">Leia o código para abastecer<br>ou pedir assistência · 919 982 150</div></div>`).join('')}</body></html>`);
+      w.document.close(); return;
+    }
     w.document.write(`<!doctype html><html lang="pt-PT"><head><meta charset="utf-8"><title>Etiquetas QR · Coronel Café</title>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500&family=Hanken+Grotesk:wght@400;500&display=swap" rel="stylesheet">
 <style>@page{size:A4;margin:10mm}body{margin:0;font-family:'Hanken Grotesk',Arial,sans-serif;color:#1D1D1F}
