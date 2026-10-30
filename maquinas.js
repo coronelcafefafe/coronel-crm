@@ -15,11 +15,11 @@ window.MAQ_INIT = function () {
   P.maq = 'M6 3h12a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM8 6h5v8H8zM15.5 7v1M15.5 10v1M8 17h8';
   P.qr = 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 14h2v2h-2zM14 18h2v2h-2zM18 18h2v2h-2z';
   const iP = NAV.findIndex(n => n[0] === 'pedidos');
-  NAV.splice(iP + 1, 0, ['maquinas', 'Máquinas', 'maq'], ['rota', 'Rota de abastecimento', 'pin']);
+  NAV.splice(iP + 1, 0, ['maquinas', 'Máquinas', 'maq'], ['rota', 'Rota de abastecimento', 'pin'], ['mapa', 'Mapa das máquinas', 'pin']);
   const iC = NAV.findIndex(n => n[0] === 'compras');
   NAV.splice(iC + 1, 0, ['stock', 'Stock do armazém', 'box']);
   SO_VALORES.push('stock', 'maqqr');
-  Object.assign(TITLES, { maquinas: 'Máquinas', maquina: 'Máquina', stock: 'Stock do armazém', maqqr: 'Etiquetas QR', rota: 'Rota' });
+  Object.assign(TITLES, { maquinas: 'Máquinas', maquina: 'Máquina', stock: 'Stock do armazém', maqqr: 'Etiquetas QR', rota: 'Rota', mapa: 'Mapa' });
   NOMES.maquinas = ['máquina', 'Nova máquina'];
   F.maquinas = [
     { k: 'numero', l: 'Número da máquina', t: 'text', req: 1, ph: 'Ex.: 15' },
@@ -111,7 +111,9 @@ window.MAQ_INIT = function () {
   const visitaB = m => { const p = proxima(m); if (!p) return ''; const n = difD(p, TODAY()); return n < 0 ? badge(`Atrasada ${-n} dia${n === -1 ? '' : 's'}`, 'bad') : n === 0 ? badge('Abastecer hoje', 'gold') : ''; };
   const freqTxt = m => m.freq ? FREQ[m.freq] + ((m.dias || []).length ? ' (' + m.dias.map(x => DIA_C[+x]).join(', ') + ')' : '') : '';
   const moradaE = e => e ? [e.morada, [e.cp, e.localidade].filter(Boolean).join(' ')].filter(Boolean).join(', ') : '';
-  const mapaU = e => 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(moradaE(e) || e?.nome || '');
+  const temGeo = m => m && m.lat != null && m.lng != null && m.lat !== '' && m.lng !== '';
+  const geoTxt = m => `${(+m.lat).toFixed(6)},${(+m.lng).toFixed(6)}`;
+  const mapaU = (e, m) => 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(temGeo(m) ? geoTxt(m) : (moradaE(e) || e?.nome || ''));
 
   /* ---------- contador de serviços e duração das peças ---------- */
   const nF = n => Math.round(+n || 0).toLocaleString('pt-PT');
@@ -221,6 +223,7 @@ window.MAQ_INIT = function () {
       <div style="flex:1;min-width:180px"><div class="eyebrow">${esc(tipoT(m))}${m.modelo ? ' · ' + esc(m.modelo) : ''}</div>
       <div style="font-size:17px;margin-top:2px">${esc(local(m))}${m.sitio ? ` <span class="note">· ${esc(m.sitio)}</span>` : ''}</div>${m.entidade ? `<button class="lnk" style="padding:0;margin-top:2px" data-act="ficha" data-id="${m.entidade}">Ver ficha do cliente</button>` : ''}
       ${m.nSerie ? `<div class="note">N.º de série ${esc(m.nSerie)}</div>` : ''}
+      <div class="note">${temGeo(m) ? `<a href="${esc(mapaU(null, m))}" target="_blank" rel="noopener" data-act="link">Ver localização no mapa</a>` : 'Sem localização GPS.'}${S.canWrite ? ` · <button class="lnk" style="padding:0" data-act="maqGeo" data-id="${m.id}">${temGeo(m) ? 'Atualizar' : 'Guardar'} localização aqui</button>` : ''}</div>
       ${contadorAtual(m.id) ? `<div class="note">Contador: <b>${nF(contadorAtual(m.id).c)}</b> serviços (${esc(fD(contadorAtual(m.id).data))})</div>` : ''}
       ${m.entidade ? `<div class="note">${m.freq ? `Abastecimento ${esc(freqTxt(m).toLowerCase())} · próxima visita <b>${esc(fDia(proxima(m)))}</b>` : 'Sem frequência de abastecimento: defina em Editar para entrar na rota.'}${ultimoAb(m.id) ? ` · último ${esc(fDia(ultimoAb(m.id)))}` : ''}</div>` : ''}</div>
       <div>${estB(m)}</div>
@@ -348,6 +351,20 @@ window.MAQ_INIT = function () {
       const n = rows.length; closeSheet(); toast(c.modo === 'abastecimento' ? `Abastecimento registado (${n} produto${n === 1 ? '' : 's'})` : 'Registado');
       S.maqCart = null;
     },
+    maqGeo: d => {
+      const m = M(d.id); if (!m || !canAct()) return;
+      if (!navigator.geolocation) return toast('Este telemóvel não dá a localização.');
+      toast('A obter a localização…');
+      navigator.geolocation.getCurrentPosition(async pos => {
+        const { latitude: lat, longitude: lng, accuracy } = pos.coords;
+        if (accuracy > 150 && !confirm(`A localização tem pouca precisão (cerca de ${Math.round(accuracy)} m). Guardar mesmo assim?`)) return;
+        const outras = D('maquinas').filter(x => x.id !== m.id && x.entidade && x.entidade === m.entidade && (x.sitio || '') === (m.sitio || '') && !temGeo(x));
+        if (await patch('maquinas', m.id, { lat, lng })) {
+          for (const x of outras) await patch('maquinas', x.id, { lat, lng });
+          toast('Localização guardada' + (outras.length ? ` (também nas máquinas ${outras.map(x => x.numero).join(', ')})` : ''));
+        }
+      }, err => toast(err.code === 1 ? 'Permita o acesso à localização para o CRM.' : 'Não foi possível obter a localização.'), { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+    },
     maqContador: async d => {
       const m = M(d.id); if (!m) return; const ult = contadorAtual(m.id);
       const v = prompt(`Contador de serviços da máquina ${m.numero}${ult ? ` (última leitura ${nF(ult.c)})` : ''}`, ''); if (v === null || v.trim() === '') return;
@@ -469,11 +486,55 @@ window.MAQ_INIT = function () {
     const top = `<div class="tb"><div class="tbr"><label class="srch">${ic('search', 18)}<input id="q-rota" data-q="rota" type="search" placeholder="Máquina, cliente ou localidade" value="${esc(S.q.rota || '')}" autocomplete="off"></label></div>
       <div class="chips">${chips.map(x => `<button class="chipb ${x === c ? 'on' : ''}" data-act="chip" data-v="rota" data-c="${esc(x)}">${esc(x)}</button>`).join('')}</div></div>`;
     const sum = `<p class="note" style="margin:0 0 10px"><b>${L.length}</b> máquina${L.length === 1 ? '' : 's'} a visitar${c === 'Hoje' ? ` · <b>${feitas.length}</b> já abastecida${feitas.length === 1 ? '' : 's'} hoje` : ''}. Leia o QR e abasteça: a máquina sai da lista.${semRota ? ` ${semRota} máquina${semRota === 1 ? '' : 's'} sem frequência definida não ${semRota === 1 ? 'entra' : 'entram'} na rota.` : ''}</p>`;
-    const row = x => { const n = x.p ? difD(x.p, TODAY()) : 0; return `<div class="row" role="button" data-act="maqOpen" data-id="${x.m.id}"><span class="av k">${esc(x.m.numero)}</span><span class="rt"><span class="r1">${esc(x.e?.nome || 'Cliente')}${x.m.sitio ? ' · ' + esc(x.m.sitio) : ''}</span><span class="r2">${esc([moradaE(x.e) || x.e?.localidade, x.m.freq ? FREQ[x.m.freq] : ''].filter(Boolean).join(' · '))}</span></span><span class="rr">${pecaB(x.m.id)}${x.m.estado === 'parada' ? badge('Parada', 'bad') : n < 0 ? badge(`Atrasada ${-n} d`, 'bad') : (n > 0 || c !== 'Hoje') ? `<span class="note">${esc(fDia(x.p))}</span>` : ''}<a class="btn sm" href="${esc(mapaU(x.e))}" target="_blank" rel="noopener" data-act="link">Mapa</a></span></div>`; };
-    const rotaU = xs => { const pts = xs.map(x => moradaE(x.e) || x.e?.nome).filter(Boolean).slice(0, 10); if (!pts.length) return ''; return 'https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=' + encodeURIComponent(pts[pts.length - 1]) + (pts.length > 1 ? '&waypoints=' + encodeURIComponent(pts.slice(0, -1).join('|')) : ''); };
+    const row = x => { const n = x.p ? difD(x.p, TODAY()) : 0; return `<div class="row" role="button" data-act="maqOpen" data-id="${x.m.id}"><span class="av k">${esc(x.m.numero)}</span><span class="rt"><span class="r1">${esc(x.e?.nome || 'Cliente')}${x.m.sitio ? ' · ' + esc(x.m.sitio) : ''}</span><span class="r2">${esc([moradaE(x.e) || x.e?.localidade, x.m.freq ? FREQ[x.m.freq] : ''].filter(Boolean).join(' · '))}</span></span><span class="rr">${pecaB(x.m.id)}${x.m.estado === 'parada' ? badge('Parada', 'bad') : n < 0 ? badge(`Atrasada ${-n} d`, 'bad') : (n > 0 || c !== 'Hoje') ? `<span class="note">${esc(fDia(x.p))}</span>` : ''}<a class="btn sm" href="${esc(mapaU(x.e, x.m))}" target="_blank" rel="noopener" data-act="link">Mapa</a></span></div>`; };
+    const rotaU = xs => { const pts = [...new Set(xs.map(x => temGeo(x.m) ? geoTxt(x.m) : (moradaE(x.e) || x.e?.nome)).filter(Boolean))].slice(0, 10); if (!pts.length) return ''; return 'https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=' + encodeURIComponent(pts[pts.length - 1]) + (pts.length > 1 ? '&waypoints=' + encodeURIComponent(pts.slice(0, -1).join('|')) : ''); };
     const blocos = [...grupos.entries()].map(([z, xs]) => `<div class="panel" style="margin-bottom:14px"><div class="ph"><h2>${esc(z)}</h2><span class="grow"></span>${rotaU(xs) ? `<a class="btn sm" href="${esc(rotaU(xs))}" target="_blank" rel="noopener">${ic('pin', 16)}Rota no mapa</a>` : ''}</div>${xs.map(row).join('')}</div>`).join('');
     return `<div class="pg">${top}${sum}${blocos || `<div class="panel empty"><b>${c === 'Hoje' ? 'Nada para abastecer hoje' : 'Nada previsto'}</b>${D('maquinas').some(m => m.freq) ? 'Veja os próximos dias.' : 'Defina a frequência de abastecimento em cada máquina (Editar ou Mover).'}</div>`}</div>`;
   });
+
+  /* ---------- mapa das máquinas ---------- */
+  const FREQ_COR = { '3s': '#1D1D1F', '2s': '#3A3A3C', '1s': '#6E6E73', '15d': '#FFFFFF', '1m': '#F2F2F4' };
+  let leafP = null;
+  const loadLeaflet = () => window.L ? Promise.resolve() : (leafP = leafP || new Promise((ok, ko) => {
+    const c = document.createElement('link'); c.rel = 'stylesheet'; c.href = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css'; document.head.appendChild(c);
+    const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js'; s.onload = ok; s.onerror = () => { leafP = null; ko(); }; document.head.appendChild(s);
+  }));
+  let mapaObj = null;
+  VIEWS.mapa = () => loadingOr(() => {
+    const L0 = D('maquinas').filter(m => m.estado !== 'abate');
+    const com = L0.filter(temGeo), sem = L0.filter(m => !temGeo(m) && m.entidade);
+    setTimeout(desenhaMapa, 0);
+    return `<div class="pg"><p class="note" style="margin:0 0 10px"><b>${com.length}</b> máquina${com.length === 1 ? '' : 's'} no mapa${sem.length ? ` · sem localização: ${sem.map(m => esc(m.numero)).join(', ')} (na ficha da máquina, "Guardar localização aqui")` : ''}.</p>
+      <div class="chips" style="margin:0 0 10px">${[['3s', '3x semana'], ['1s', 'Semanal'], ['15d', 'Quinzenal']].map(([k, t]) => `<span class="chipb" style="cursor:default"><span style="display:inline-block;width:10px;height:10px;border-radius:5px;margin-right:6px;background:${FREQ_COR[k]};border:1px solid #1D1D1F"></span>${t}</span>`).join('')}</div>
+      <div id="mq-mapa" style="height:calc(100vh - 230px);min-height:380px;border-radius:12px;border:1px solid var(--line);overflow:hidden;background:#F2F2F4"></div></div>`;
+  });
+  async function desenhaMapa() {
+    const el = document.getElementById('mq-mapa'); if (!el || el._feito) return; el._feito = 1;
+    try { await loadLeaflet(); } catch (_) { el.innerHTML = '<p class="note" style="padding:16px">Sem ligação para carregar o mapa.</p>'; return; }
+    if (!document.body.contains(el)) return;
+    let vista = null;
+    if (mapaObj) { try { vista = { c: mapaObj.getCenter(), z: mapaObj.getZoom() }; mapaObj.remove(); } catch (_) { } }
+    const map = mapaObj = window.L.map(el, { zoomControl: true });
+    map.on('popupopen', ev => ev.popup.getElement().querySelectorAll('[data-mq]').forEach(b => { b.onclick = () => { map.closePopup(); go('maquina', { id: b.dataset.mq }); }; }));
+    window.L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap &copy; CARTO' }).addTo(map);
+    const grupos = new Map();
+    D('maquinas').filter(m => m.estado !== 'abate' && temGeo(m)).forEach(m => { const k = geoTxt(m); if (!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(m); });
+    const pts = [];
+    grupos.forEach(ms => {
+      ms.sort((a, b) => (parseInt(a.numero) || 0) - (parseInt(b.numero) || 0));
+      const m0 = ms[0], e = S.data.entidades.get(m0.entidade), f = ms.map(m => m.freq).find(Boolean) || '';
+      const cor = FREQ_COR[f] || '#F2F2F4', claro = f === '15d' || f === '1m' || !f;
+      const atras = ms.some(m => (proxima(m) || '9') < TODAY()), parada = ms.some(m => m.estado === 'parada');
+      const txt = ms.length > 2 ? `${ms[0].numero}–${ms[ms.length - 1].numero}` : ms.map(m => m.numero).join(',');
+      const icon = window.L.divIcon({ className: '', iconSize: null, html: `<div style="transform:translate(-50%,-50%);white-space:nowrap;padding:3px 7px;border-radius:12px;font:500 12px 'Hanken Grotesk',Arial,sans-serif;background:${cor};color:${claro ? '#1D1D1F' : '#fff'};border:1.5px solid ${parada || atras ? '#b3261e' : '#1D1D1F'};box-shadow:0 1px 3px rgba(0,0,0,.25)">${esc(txt)}</div>` });
+      const lat = +m0.lat, lng = +m0.lng; pts.push([lat, lng]);
+      window.L.marker([lat, lng], { icon }).addTo(map).bindPopup(`<div style="font:13px 'Hanken Grotesk',Arial,sans-serif;min-width:180px"><b>${esc(e?.nome || 'Sem cliente')}</b>${m0.sitio ? '<br>' + esc(m0.sitio) : ''}<br><span style="color:#6E6E73">${f ? esc(FREQ[f]) : 'sem frequência'}</span>
+        <div style="margin-top:6px">${ms.map(m => `<button class="lnk" style="display:block;padding:2px 0" data-mq="${m.id}">Máquina ${esc(m.numero)} · ${esc(tipoT(m))}${m.estado === 'parada' ? ' · parada' : ''}</button>`).join('')}</div>
+        <a href="${esc(mapaU(null, m0))}" target="_blank" rel="noopener" style="display:inline-block;margin-top:6px;color:#1D1D1F">Abrir no Google Maps</a></div>`);
+    });
+    if (vista) map.setView(vista.c, vista.z); else if (pts.length) map.fitBounds(pts, { padding: [30, 30], maxZoom: 15 }); else map.setView([41.45, -8.17], 11);
+    setTimeout(() => map.invalidateSize(), 50);
+  }
 
   /* ---------- stock do armazém ---------- */
   function stockMap() {
