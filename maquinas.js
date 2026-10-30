@@ -6,7 +6,7 @@ window.MAQ_INIT = function () {
   const FREQ_D = { '3s': 2, '2s': 3, '1s': 7, '15d': 14, '1m': 30 };
   const DIAS = { '1': 'Segunda', '2': 'Terça', '3': 'Quarta', '4': 'Quinta', '5': 'Sexta', '6': 'Sábado' };
   const DIA_C = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
-  const NOVAS = ['maquinas', 'maq_local', 'maq_assist', 'stock_mov', 'maq_fat'];
+  const NOVAS = ['maquinas', 'maq_local', 'maq_assist', 'stock_mov', 'maq_fat', 'maq_leituras'];
   NOVAS.forEach(c => { if (!COLS.includes(c)) COLS.push(c); S.data[c] = new Map(); });
 
   /* ---------- ícones, navegação, estilos ---------- */
@@ -35,6 +35,7 @@ window.MAQ_INIT = function () {
     { k: 'precoMaquina', l: 'Preço de venda na máquina (€, por unidade)', t: 'num' },
     { k: 'maquinas', l: 'Aparece no abastecimento das máquinas', t: 'bool' },
     { k: 'peca', l: 'É peça (aparece nas assistências)', t: 'bool' },
+    { k: 'vidaServicos', l: 'Duração típica da peça (n.º de serviços, opcional)', t: 'num' },
   );
   const st = document.createElement('style');
   st.textContent = `
@@ -108,6 +109,63 @@ window.MAQ_INIT = function () {
   const moradaE = e => e ? [e.morada, [e.cp, e.localidade].filter(Boolean).join(' ')].filter(Boolean).join(', ') : '';
   const mapaU = e => 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(moradaE(e) || e?.nome || '');
 
+  /* ---------- contador de serviços e duração das peças ---------- */
+  const nF = n => Math.round(+n || 0).toLocaleString('pt-PT');
+  function contadorAtual(mid) {
+    let best = null;
+    const ver = (c, data) => { if (c == null || c === '') return; c = +c; if (!best || c > best.c) best = { c, data }; };
+    D('maq_leituras').forEach(l => { if (l.maquina === mid) ver(l.contador, l.data); });
+    D('maq_assist').forEach(a => { if (a.maquina === mid) ver(a.contador, a.data); });
+    return best;
+  }
+  // trocas de cada peça com o contador da assistência em que foi posta
+  function trocas(mid) {
+    const A = new Map(D('maq_assist').map(a => [a.id, a])), by = new Map();
+    D('stock_mov').forEach(x => {
+      if (x.tipo !== 'peca' || (mid && x.maquina !== mid)) return;
+      const a = A.get(x.assist), c = a && a.contador != null && a.contador !== '' ? +a.contador : null;
+      const k = x.maquina + '|' + x.artigo; if (!by.has(k)) by.set(k, { maq: x.maquina, artigo: x.artigo, L: [] });
+      by.get(k).L.push({ c, data: x.data, prev: !!(a && a.preventiva) });
+    });
+    by.forEach(g => g.L.sort((a, b) => (a.c ?? -1) - (b.c ?? -1) || String(a.data).localeCompare(String(b.data))));
+    return [...by.values()];
+  }
+  // duração de referência: a da ficha do artigo ou, se não houver, a média das peças que avariaram (todas as máquinas)
+  let vidaCache = null, vidaKey = '';
+  function vidaRef(artigo) {
+    const a = art(artigo); if (a && +a.vidaServicos > 0) return { v: +a.vidaServicos, fonte: 'ficha' };
+    let key = S.data.stock_mov.size + '|' + S.data.maq_assist.size; S.data.maq_assist.forEach(x => { key += '|' + (x.contador ?? '') + (x.preventiva ? 'p' : ''); });
+    if (!vidaCache || vidaKey !== key) {
+      vidaKey = key; vidaCache = new Map();
+      trocas(null).forEach(g => { for (let i = 1; i < g.L.length; i++) { const p = g.L[i - 1], q = g.L[i]; if (p.c == null || q.c == null || q.prev || q.c <= p.c) continue; const m = vidaCache.get(g.artigo) || []; m.push(q.c - p.c); vidaCache.set(g.artigo, m); } });
+    }
+    const m = vidaCache.get(artigo); if (!m || !m.length) return null;
+    return { v: Math.round(m.reduce((s, x) => s + x, 0) / m.length), fonte: 'media', n: m.length };
+  }
+  function pecasEstado(mid) {
+    const atual = contadorAtual(mid);
+    return trocas(mid).map(g => {
+      const ult = [...g.L].reverse().find(x => x.c != null), ref = vidaRef(g.artigo);
+      const hist = []; for (let i = 1; i < g.L.length; i++) { const p = g.L[i - 1], q = g.L[i]; if (p.c != null && q.c != null && q.c > p.c) hist.push({ de: p.c, a: q.c, d: q.c - p.c, prev: q.prev }); }
+      let prox = null, falta = null, est = '';
+      if (ult && ref) { prox = ult.c + ref.v; if (atual) { falta = prox - atual.c; est = falta <= 0 ? 'ja' : falta <= Math.max(500, ref.v * 0.1) ? 'breve' : ''; } }
+      return { artigo: g.artigo, ult, ref, hist, prox, falta, est, semContador: g.L.some(x => x.c == null) };
+    }).sort((a, b) => (a.falta ?? 9e12) - (b.falta ?? 9e12));
+  }
+  const pecaB = mid => { const L = pecasEstado(mid); return L.some(x => x.est === 'ja') ? badge('Peça a trocar', 'bad') : L.some(x => x.est === 'breve') ? badge('Peça a trocar em breve', 'gold') : ''; };
+  function pecasPanel(m) {
+    const L = pecasEstado(m.id), atual = contadorAtual(m.id);
+    const row = x => { const a = art(x.artigo);
+      const sub = [x.ult ? `posta aos ${nF(x.ult.c)} serviços (${fD(x.ult.data)})` : 'troca sem contador registado',
+        x.ref ? `dura ~${nF(x.ref.v)}${x.ref.fonte === 'media' ? ` (média de ${x.ref.n} troca${x.ref.n === 1 ? '' : 's'})` : ''}` : 'duração ainda desconhecida',
+        x.hist.length ? 'histórico: ' + x.hist.map(h => `${nF(h.de)}→${nF(h.a)} = ${nF(h.d)}${h.prev ? ' (preventiva)' : ''}`).join('; ') : ''].filter(Boolean).join(' · ');
+      const dir = x.prox == null ? '' : `<span class="num">troca aos ${nF(x.prox)}</span>${x.falta != null ? `<span class="note">${x.falta <= 0 ? `passou ${nF(-x.falta)}` : `faltam ${nF(x.falta)}`}</span>` : ''}`;
+      return `<div class="row" style="cursor:default"><span class="rt"><span class="r1">${esc(a?.nome || 'Peça')}</span><span class="r2" style="white-space:normal">${esc(sub)}</span></span><span class="rr">${x.est === 'ja' ? badge('Trocar já', 'bad') : x.est === 'breve' ? badge('Trocar em breve', 'gold') : ''}${dir}</span></div>`; };
+    return `<div class="panel" style="margin-top:14px"><div class="ph"><h2>Peças e duração</h2><span class="grow"></span>${S.canWrite ? `<button class="btn sm" data-act="maqContador" data-id="${m.id}">Registar contador</button>` : ''}</div>
+      <p class="note" style="margin:0 16px 8px">${atual ? `Contador atual: <b>${nF(atual.c)}</b> serviços (lido ${esc(fD(atual.data))}).` : 'Ainda sem leitura do contador de serviços.'} A duração conta-se entre trocas da mesma peça; as trocas preventivas não entram na média.</p>
+      ${L.length ? L.map(row).join('') : '<div class="empty"><b>Sem peças trocadas</b>As peças das assistências aparecem aqui, com o contador em que foram postas.</div>'}</div>`;
+  }
+
   /* ---------- lista de máquinas ---------- */
   VIEWS.maquinas = () => loadingOr(() => {
     const chips = ['Todas', 'Vending', 'Café', 'Paradas', 'Em atraso', 'Sem rota', 'No armazém'], c = S.f.maquinas ?? chips[0];
@@ -124,7 +182,7 @@ window.MAQ_INIT = function () {
       <div class="chips">${chips.map(x => `<button class="chipb ${x === c ? 'on' : ''}" data-act="chip" data-v="maquinas" data-c="${esc(x)}">${esc(x)}</button>`).join('')}</div>
       ${S.verValores ? `<div class="chips">${PER.map(([k, t]) => `<button class="chipb ${k === per ? 'on' : ''}" data-act="maqPer" data-c="${k}">${t}</button>`).join('')}</div>` : ''}</div>`;
     const sum = `<p class="note" style="margin:0 0 10px"><b>${L.length}</b> máquina${L.length === 1 ? '' : 's'}${tot ? ` · faturado <b>${eur(tot.fat)}</b> · resultado <b>${eur(tot.res)}</b>` : ''}. Leia o QR colado na máquina para abrir a ficha diretamente.</p>`;
-    const row = m => rowH({ act: 'maqOpen', id: m.id, av: m.numero, avk: 1, title: `Máquina ${m.numero}${m.modelo ? ' · ' + m.modelo : ''}`, sub: `${m.tipo === 'cafe' ? 'Café' : 'Vending'} · ${local(m)}${m.freq ? ' · ' + FREQ[m.freq].toLowerCase() : ''}`, right: R ? eur(R.get(m.id).res) : undefined, badges: estB(m) + visitaB(m) });
+    const row = m => rowH({ act: 'maqOpen', id: m.id, av: m.numero, avk: 1, title: `Máquina ${m.numero}${m.modelo ? ' · ' + m.modelo : ''}`, sub: `${m.tipo === 'cafe' ? 'Café' : 'Vending'} · ${local(m)}${m.freq ? ' · ' + FREQ[m.freq].toLowerCase() : ''}`, right: R ? eur(R.get(m.id).res) : undefined, badges: estB(m) + visitaB(m) + pecaB(m.id) });
     return `<div class="pg">${roBanner()}${top}${sum}${listBlock('maquinas', L, row, '<b>Sem máquinas</b>Registe as máquinas com o número que têm (ou vão ter) na etiqueta QR.')}</div>`;
   });
 
@@ -144,6 +202,7 @@ window.MAQ_INIT = function () {
       <div style="flex:1;min-width:180px"><div class="eyebrow">${m.tipo === 'cafe' ? 'Máquina de café' : 'Máquina de vending'}${m.modelo ? ' · ' + esc(m.modelo) : ''}</div>
       <div style="font-size:17px;margin-top:2px">${esc(local(m))}</div>${m.entidade ? `<button class="lnk" style="padding:0;margin-top:2px" data-act="ficha" data-id="${m.entidade}">Ver ficha do cliente</button>` : ''}
       ${m.nSerie ? `<div class="note">N.º de série ${esc(m.nSerie)}</div>` : ''}
+      ${contadorAtual(m.id) ? `<div class="note">Contador: <b>${nF(contadorAtual(m.id).c)}</b> serviços (${esc(fD(contadorAtual(m.id).data))})</div>` : ''}
       ${m.entidade ? `<div class="note">${m.freq ? `Abastecimento ${esc(freqTxt(m).toLowerCase())} · próxima visita <b>${esc(fDia(proxima(m)))}</b>` : 'Sem frequência de abastecimento: defina em Editar para entrar na rota.'}${ultimoAb(m.id) ? ` · último ${esc(fDia(ultimoAb(m.id)))}` : ''}</div>` : ''}</div>
       <div>${estB(m)}</div>
       ${S.canWrite ? `<button class="btn" data-act="edit" data-col="maquinas" data-id="${m.id}">Editar</button>` : ''}</div></div>`;
@@ -160,20 +219,23 @@ window.MAQ_INIT = function () {
       <div class="mini"><div><span>Faturado</span><b>${eur(r.fat)}</b></div><div><span>Produtos (custo)</span><b>${eur(r.prod)}</b></div><div><span>Peças (custo)</span><b>${eur(r.pecas)}</b></div><div><span>Resultado</span><b style="color:${r.res < 0 ? 'var(--bad)' : 'inherit'}">${eur(r.res)}</b></div></div>
       <p class="note" style="margin:10px 0 0">${r.fat ? `Margem ${Math.round(r.res / r.fat * 100)}%. ` : ''}${r.vendaEsp ? `Ao preço da máquina, os produtos que entraram valem ${eur(r.vendaEsp)}. ` : ''}${r.minutos ? `Assistências: ${Math.round(r.minutos / 6) / 10} h. ` : ''}${r.semCusto ? `${r.semCusto} movimento${r.semCusto === 1 ? '' : 's'} sem preço de custo no XD.` : ''}</p></div></div>`;
     }
-    h += timeline(m) + `</div>`;
+    h += pecasPanel(m) + timeline(m) + `</div>`;
     return h;
   });
 
   S.asDraft = {};
   const dr = (a, k) => (S.asDraft[a.id] && S.asDraft[a.id][k] !== undefined) ? S.asDraft[a.id][k] : (a[k] || '');
   document.addEventListener('input', e => { const t = e.target; if (t.dataset && t.dataset.as) { (S.asDraft[t.dataset.as] = S.asDraft[t.dataset.as] || {})[t.dataset.k] = t.value; } });
-  document.addEventListener('change', e => { const t = e.target; if (t.dataset && t.dataset.as && S.canWrite) patch('maq_assist', t.dataset.as, { [t.dataset.k]: t.value.trim() }); });
+  const asVal = t => t.type === 'checkbox' ? t.checked : t.dataset.num ? (t.value === '' ? null : Math.max(0, parseInt(t.value) || 0)) : t.value.trim();
+  document.addEventListener('change', e => { const t = e.target; if (t.dataset && t.dataset.as && S.canWrite) patch('maq_assist', t.dataset.as, { [t.dataset.k]: asVal(t) }); });
   function assistPanel(a) {
     const pec = D('stock_mov').filter(x => x.assist === a.id);
     const min = a.inicio ? Math.max(1, Math.round((Date.now() - new Date(a.inicio)) / 60000)) : (a.minutos || 0);
     return `<div class="panel" style="margin-top:14px;border-color:var(--gold,#C4A052)"><div class="ph"><h2>Assistência em curso</h2><span class="note">desde ${a.inicio ? new Date(a.inicio).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' }) : fD(a.data)} · ${min} min</span></div><div class="pb">
       <div class="fg"><div class="fld full"><label for="as-avaria">Avaria</label><input id="as-avaria" data-as="${a.id}" data-k="avaria" class="inp" value="${esc(dr(a, 'avaria'))}" placeholder="O que a máquina tinha (1 linha)"></div>
-      <div class="fld full"><label for="as-sol">O que foi feito</label><input id="as-sol" data-as="${a.id}" data-k="solucao" class="inp" value="${esc(dr(a, 'solucao'))}" placeholder="Ex.: troca da bomba, limpeza do misturador"></div></div>
+      <div class="fld full"><label for="as-sol">O que foi feito</label><input id="as-sol" data-as="${a.id}" data-k="solucao" class="inp" value="${esc(dr(a, 'solucao'))}" placeholder="Ex.: troca da bomba, limpeza do misturador"></div>
+      <div class="fld"><label for="as-cont">Contador de serviços</label><input id="as-cont" data-as="${a.id}" data-k="contador" data-num="1" type="number" inputmode="numeric" min="0" class="inp" value="${esc(dr(a, 'contador'))}" placeholder="${contadorAtual(a.maquina) ? 'último: ' + nF(contadorAtual(a.maquina).c) : 'Ex.: 14000'}"></div>
+      <div class="fld" style="align-self:end"><label class="tog"><input id="as-prev" type="checkbox" data-as="${a.id}" data-k="preventiva" ${a.preventiva ? 'checked' : ''}><span>Troca preventiva (a peça ainda não tinha avariado)</span></label></div></div>
       <div class="eyebrow" style="margin:14px 0 6px">Peças usadas</div>
       ${pec.length ? `<table class="tt"><tbody>${pec.map(x => `<tr><td>${esc(art(x.artigo)?.nome || 'Artigo')}</td><td class="num">${+x.qt}</td>${S.verValores ? `<td class="num">${x.custo != null ? eur(x.custo * x.qt) : '—'}</td>` : ''}</tr>`).join('')}</tbody></table>` : '<p class="note" style="margin:0">Ainda sem peças.</p>'}
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px"><button class="btn" data-act="maqCart" data-c="peca" data-id="${a.maquina}" data-a="${a.id}">${ic('plus', 16)}Peças</button>
@@ -195,7 +257,7 @@ window.MAQ_INIT = function () {
     });
     D('maq_assist').filter(a => a.maquina === m.id && a.estado === 'fechada').forEach(a => {
       const c = D('stock_mov').filter(x => x.assist === a.id).reduce((s, x) => s + (x.custo != null ? +x.custo * +x.qt : 0), 0);
-      ev.push({ q: a.fim || a.criado, t: 'Assistência' + (a.minutos ? ` · ${a.minutos} min` : ''), s: [a.avaria, a.solucao].filter(Boolean).join(' → ') || '—', r: S.verValores && c ? eur(c) : '', por: a.criadoPor });
+      ev.push({ q: a.fim || a.criado, t: 'Assistência' + (a.minutos ? ` · ${a.minutos} min` : '') + (a.contador != null ? ` · aos ${nF(a.contador)} serviços` : '') + (a.preventiva ? ' · preventiva' : ''), s: [a.avaria, a.solucao].filter(Boolean).join(' → ') || '—', r: S.verValores && c ? eur(c) : '', por: a.criadoPor });
     });
     D('maq_local').filter(l => l.maquina === m.id).forEach(l => ev.push({ q: l.criado, t: 'Mudança de local', s: (l.entidade ? entName(l.entidade) : 'Armazém') + (l.notas ? ' · ' + l.notas : ''), r: '', por: l.criadoPor }));
     if (S.verValores) D('maq_fat').filter(f => f.maquina === m.id).forEach(f => ev.push({ q: f.data + 'T23:59', t: 'Faturação', s: f.notas || (f.entidade ? entName(f.entidade) : ''), r: eur(f.valor), por: f.criadoPor, fat: f.id }));
@@ -231,6 +293,7 @@ window.MAQ_INIT = function () {
     <div class="mq-grid">${L.map(a => { const q = +c.items[a.id] || 0; return `<div class="mq-it ${q ? 'on' : ''}">
       <div data-act="mqAdd" data-id="${a.id}" data-c="1"><div class="ph-img">${a.foto ? `<img src="${esc(fotoUrl(a.foto))}" alt="" loading="lazy">` : esc(initials(a.nome))}</div><div class="nm">${esc(a.nome)}</div></div>
       ${q ? `<span class="mq-q ${q < 0 ? 'neg' : ''}" data-act="mqSet" data-id="${a.id}">${q}</span><div class="mq-pm"><button data-act="mqAdd" data-id="${a.id}" data-c="-1" aria-label="Menos">−</button><button data-act="mqAdd" data-id="${a.id}" data-c="1" aria-label="Mais">+</button></div>` : ''}</div>` }).join('') || '<p class="note">Nenhum produto. Procure pelo nome ou marque os artigos "Aparece no abastecimento" no catálogo.</p>'}</div>
+    ${c.maq && (c.modo === 'abastecimento' || c.modo === 'retirada') ? `<div class="fld" style="margin-top:12px;max-width:260px"><label for="mq-cont">Contador de serviços (opcional)</label><input id="mq-cont" type="number" inputmode="numeric" min="0" class="inp" value="${esc(c.cont || '')}" data-mqc="1" placeholder="${contadorAtual(c.maq) ? 'último: ' + nF(contadorAtual(c.maq).c) : 'Ex.: 14000'}"></div>` : ''}
     <div class="mq-bar"><span class="note"><b>${n}</b> produto${n === 1 ? '' : 's'} · <b>${un}</b> un.${S.verValores && cst ? ` · custo ${eur(cst)}` : ''}</span><span class="grow"></span><button class="btn" data-act="close">Cancelar</button><button class="btn pri" data-act="mqOk" ${n ? '' : 'disabled'}>${MODOS[c.modo][1]}</button></div>`;
   }
   function cartOpen(modo, maq, assist) {
@@ -239,7 +302,7 @@ window.MAQ_INIT = function () {
     openSheet(`<div class="sh"><h2>${MODOS[modo][0]}${m ? ' ' + esc(m.numero) : ''}</h2><button class="ib" data-act="close" aria-label="Fechar">${ic('x')}</button></div><div class="sb"><p class="note" style="margin:0 0 10px">${modo === 'acerto' ? 'Toque para somar e use − para tirar (pode ficar negativo).' : 'Toque no produto para somar uma unidade. Toque no número para escrever a quantidade.'}</p><div id="mq-cart">${cartBody()}</div></div>`);
   }
   const cartRedraw = () => { const el = document.getElementById('mq-cart'); if (!el) return; const f = document.activeElement?.id === 'mq-q'; const pos = f ? document.activeElement.selectionStart : null; el.innerHTML = cartBody(); if (f) { const i = document.getElementById('mq-q'); i.focus(); try { i.setSelectionRange(pos, pos) } catch (_) { } } };
-  document.addEventListener('input', e => { if (e.target.dataset && e.target.dataset.mqq && S.maqCart) { S.maqCart.q = e.target.value; cartRedraw(); } });
+  document.addEventListener('input', e => { if (e.target.dataset && e.target.dataset.mqq && S.maqCart) { S.maqCart.q = e.target.value; cartRedraw(); } if (e.target.dataset && e.target.dataset.mqc && S.maqCart) S.maqCart.cont = e.target.value; });
 
   async function insertRows(col, rows) {
     if (!canAct() || !rows.length) return null;
@@ -262,8 +325,16 @@ window.MAQ_INIT = function () {
       const rows = Object.entries(c.items).filter(([, q]) => +q).map(([id, q]) => ({ tipo: c.modo, artigo: id, qt: +q, custo: custoArt(art(id)), maquina: c.maq, assist: c.assist, data: TODAY() }));
       b.disabled = true; const ok = await insertRows('stock_mov', rows); b.disabled = false;
       if (!ok) return;
+      const cont = parseInt(c.cont); if (c.maq && isFinite(cont) && cont >= 0) await insertRows('maq_leituras', [{ maquina: c.maq, contador: cont, data: TODAY() }]);
       const n = rows.length; closeSheet(); toast(c.modo === 'abastecimento' ? `Abastecimento registado (${n} produto${n === 1 ? '' : 's'})` : 'Registado');
       S.maqCart = null;
+    },
+    maqContador: async d => {
+      const m = M(d.id); if (!m) return; const ult = contadorAtual(m.id);
+      const v = prompt(`Contador de serviços da máquina ${m.numero}${ult ? ` (última leitura ${nF(ult.c)})` : ''}`, ''); if (v === null || v.trim() === '') return;
+      const n = parseInt(v); if (!isFinite(n) || n < 0) return toast('Escreva só o número do contador.');
+      if (ult && n < ult.c && !confirm(`${nF(n)} é menor do que a última leitura (${nF(ult.c)}). Guardar mesmo assim?`)) return;
+      if (await insertRows('maq_leituras', [{ maquina: m.id, contador: n, data: TODAY() }])) toast('Contador registado: ' + nF(n));
     },
     maqAssist: async d => {
       const m = M(d.id); if (!m) return;
@@ -271,13 +342,20 @@ window.MAQ_INIT = function () {
       const r = await insertRows('maq_assist', [{ maquina: m.id, entidade: m.entidade, inicio: new Date().toISOString(), data: TODAY(), estado: 'aberta' }]);
       if (r) toast('Assistência aberta. O tempo está a contar.');
     },
-    maqAssistGuardar: async d => { const ok = await patch('maq_assist', d.id, { avaria: $('#as-avaria')?.value.trim(), solucao: $('#as-sol')?.value.trim() }); if (ok) toast('Guardado'); },
+    maqAssistGuardar: async d => { const c = $('#as-cont'); const ok = await patch('maq_assist', d.id, { avaria: $('#as-avaria')?.value.trim(), solucao: $('#as-sol')?.value.trim(), contador: c ? asVal(c) : undefined, preventiva: !!$('#as-prev')?.checked }); if (ok) toast('Guardado'); },
     maqAssistFechar: async (d, b) => {
       const a = S.data.maq_assist.get(d.id); if (!a) return;
       const fim = new Date(), min = a.inicio ? Math.max(1, Math.round((fim - new Date(a.inicio)) / 60000)) : (a.minutos || null);
+      let cont = $('#as-cont') ? asVal($('#as-cont')) : (a.contador ?? null);
+      if (cont == null && D('stock_mov').some(x => x.assist === a.id)) {
+        const c = prompt('Contador de serviços da máquina (para saber quanto dura cada peça). Deixe vazio se não souber.', '');
+        if (c === null) return; cont = c.trim() === '' ? null : Math.max(0, parseInt(c) || 0);
+      }
+      const ult = contadorAtual(a.maquina);
+      if (cont != null && ult && cont < ult.c && !confirm(`O contador (${nF(cont)}) é menor do que a última leitura (${nF(ult.c)}). Guardar mesmo assim?`)) return;
       const v = prompt('Tempo da assistência (minutos)', String(min || '')); if (v === null) return;
       b.disabled = true;
-      const ok = await patch('maq_assist', a.id, { avaria: $('#as-avaria')?.value.trim(), solucao: $('#as-sol')?.value.trim(), estado: 'fechada', fim: fim.toISOString(), minutos: parseInt(v) || min });
+      const ok = await patch('maq_assist', a.id, { avaria: $('#as-avaria')?.value.trim(), solucao: $('#as-sol')?.value.trim(), contador: cont, preventiva: !!$('#as-prev')?.checked, estado: 'fechada', fim: fim.toISOString(), minutos: parseInt(v) || min });
       b.disabled = false; if (!ok) return;
       const m = M(a.maquina);
       if (m && m.estado === 'parada') await patch('maquinas', m.id, { estado: m.entidade ? 'ativa' : 'armazem' });
@@ -372,7 +450,7 @@ window.MAQ_INIT = function () {
     const top = `<div class="tb"><div class="tbr"><label class="srch">${ic('search', 18)}<input id="q-rota" data-q="rota" type="search" placeholder="Máquina, cliente ou localidade" value="${esc(S.q.rota || '')}" autocomplete="off"></label></div>
       <div class="chips">${chips.map(x => `<button class="chipb ${x === c ? 'on' : ''}" data-act="chip" data-v="rota" data-c="${esc(x)}">${esc(x)}</button>`).join('')}</div></div>`;
     const sum = `<p class="note" style="margin:0 0 10px"><b>${L.length}</b> máquina${L.length === 1 ? '' : 's'} a visitar${c === 'Hoje' ? ` · <b>${feitas.length}</b> já abastecida${feitas.length === 1 ? '' : 's'} hoje` : ''}. Leia o QR e abasteça: a máquina sai da lista.${semRota ? ` ${semRota} máquina${semRota === 1 ? '' : 's'} sem frequência definida não ${semRota === 1 ? 'entra' : 'entram'} na rota.` : ''}</p>`;
-    const row = x => { const n = x.p ? difD(x.p, TODAY()) : 0; return `<div class="row" role="button" data-act="maqOpen" data-id="${x.m.id}"><span class="av k">${esc(x.m.numero)}</span><span class="rt"><span class="r1">${esc(x.e?.nome || 'Cliente')}</span><span class="r2">${esc([moradaE(x.e) || x.e?.localidade, x.m.freq ? FREQ[x.m.freq] : ''].filter(Boolean).join(' · '))}</span></span><span class="rr">${x.m.estado === 'parada' ? badge('Parada', 'bad') : n < 0 ? badge(`Atrasada ${-n} d`, 'bad') : (n > 0 || c !== 'Hoje') ? `<span class="note">${esc(fDia(x.p))}</span>` : ''}<a class="btn sm" href="${esc(mapaU(x.e))}" target="_blank" rel="noopener" data-act="link">Mapa</a></span></div>`; };
+    const row = x => { const n = x.p ? difD(x.p, TODAY()) : 0; return `<div class="row" role="button" data-act="maqOpen" data-id="${x.m.id}"><span class="av k">${esc(x.m.numero)}</span><span class="rt"><span class="r1">${esc(x.e?.nome || 'Cliente')}</span><span class="r2">${esc([moradaE(x.e) || x.e?.localidade, x.m.freq ? FREQ[x.m.freq] : ''].filter(Boolean).join(' · '))}</span></span><span class="rr">${pecaB(x.m.id)}${x.m.estado === 'parada' ? badge('Parada', 'bad') : n < 0 ? badge(`Atrasada ${-n} d`, 'bad') : (n > 0 || c !== 'Hoje') ? `<span class="note">${esc(fDia(x.p))}</span>` : ''}<a class="btn sm" href="${esc(mapaU(x.e))}" target="_blank" rel="noopener" data-act="link">Mapa</a></span></div>`; };
     const rotaU = xs => { const pts = xs.map(x => moradaE(x.e) || x.e?.nome).filter(Boolean).slice(0, 10); if (!pts.length) return ''; return 'https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=' + encodeURIComponent(pts[pts.length - 1]) + (pts.length > 1 ? '&waypoints=' + encodeURIComponent(pts.slice(0, -1).join('|')) : ''); };
     const blocos = [...grupos.entries()].map(([z, xs]) => `<div class="panel" style="margin-bottom:14px"><div class="ph"><h2>${esc(z)}</h2><span class="grow"></span>${rotaU(xs) ? `<a class="btn sm" href="${esc(rotaU(xs))}" target="_blank" rel="noopener">${ic('pin', 16)}Rota no mapa</a>` : ''}</div>${xs.map(row).join('')}</div>`).join('');
     return `<div class="pg">${top}${sum}${blocos || `<div class="panel empty"><b>${c === 'Hoje' ? 'Nada para abastecer hoje' : 'Nada previsto'}</b>${D('maquinas').some(m => m.freq) ? 'Veja os próximos dias.' : 'Defina a frequência de abastecimento em cada máquina (Editar ou Mover).'}</div>`}</div>`;
