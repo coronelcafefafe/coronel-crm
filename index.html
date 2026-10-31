@@ -387,6 +387,7 @@ const ESTADOS={lead:'Lead',potencial:'Potencial',cliente:'Cliente',inativo:'Inat
 const ZONAS=['Fafe','Guimarães','Vizela','Lixa','Felgueiras','Outra'];
 const ORIGENS=['Facebook','Instagram','Site / loja online','Indicação','Porta a porta','Telefone','Outra'];
 const TIPOSV=['No local','Telefone','Email','WhatsApp'];
+const REPV={'1s':'Todas as semanas','15d':'De 15 em 15 dias','1m':'Todos os meses','2m':'De 2 em 2 meses','3m':'De 3 em 3 meses'};
 const RESUMOS=['Acompanhamento','Prospeção','Proposta','Realizou encomenda','Reclamação','Contacto agendado','Instalação','Assistência'];
 const EST_ENC=['Nova','Em preparação','Entregue','Faturada','Cancelada'];
 const EST_PROP=['Rascunho','Enviada','Aceite','Recusada'];
@@ -426,6 +427,7 @@ const F={
   {k:'tipo',l:'Tipo de visita',t:'sel',o:TIPOSV,def:'No local'},
   {k:'resumo',l:'Resumo',t:'sel',o:RESUMOS,def:'Acompanhamento'},
   {k:'resp',l:'Comercial',t:'user',def:'@me'},
+  {k:'repetir',l:'Repetir visita (no mesmo dia da semana)',t:'sel',o:REPV},
   {k:'relatorio',l:'Relatório',t:'area',full:1,ph:'Escreva ou dite as notas da visita. O Claude pode organizá-las.'},
   {k:'acao',l:'Próximo passo',t:'text',full:1},
   {k:'proximoContacto',l:'Próximo contacto',t:'date'},
@@ -797,7 +799,7 @@ VIEWS.ficha=()=>loadingOr(()=>{
  return h+'</div>'});
 
 /* --- rows por coleção --- */
-const visRow=v=>rowH({col:'visitas',id:v.id,av:initials(entName(v.entidade)),avk:1,title:entName(v.entidade),sub:[fD(v.data),v.tipo,v.acao].filter(Boolean).join(' · '),badges:badge(v.resumo||'Visita',toneRes[v.resumo]||'mute')});
+const visRow=v=>rowH({col:'visitas',id:v.id,av:initials(entName(v.entidade)),avk:1,title:entName(v.entidade),sub:[fD(v.data),v.tipo,v.repetir?'Repete: '+REPV[v.repetir].toLowerCase():'',v.acao].filter(Boolean).join(' · '),badges:badge(v.resumo||'Visita',toneRes[v.resumo]||'mute')});
 const encRow=x=>rowH({col:'encomendas',id:x.id,title:entName(x.entidade),sub:[fD(x.data),(x.linhas||[]).length+' artigo'+((x.linhas||[]).length===1?'':'s'),x.entregarPor?'Entrega: '+nameOf(x.entregarPor):''].filter(Boolean).join(' · '),right:eur(docTotal(x)),badges:badge(x.estado||'Nova',toneEnc[x.estado]||'mute')});
 const propRow=x=>rowH({col:'propostas',id:x.id,title:entName(x.entidade),sub:[fD(x.data),x.validade?'válida até '+fD(x.validade):''].filter(Boolean).join(' · '),right:eur(docTotal(x)),badges:badge(x.estado||'Rascunho',toneProp[x.estado]||'mute')});
 const pedRow=x=>rowH({col:'pedidos',id:x.id,title:(x.tipo||'Pedido')+' · '+entName(x.entidade),sub:[x.agendado?'Agendado '+fD(x.agendado):fD(x.data),x.descricao].filter(Boolean).join(' — '),badges:badge(x.estado||'Aberto',tonePed[x.estado]||'mute')+(S.canWrite&&x.estado!=='Concluído'?`<button class="qa" data-act="pedNext" data-id="${x.id}">${EST_PED[EST_PED.indexOf(x.estado||'Aberto')+1]||'Concluído'}</button>`:'')});
