@@ -38,6 +38,7 @@ window.MAQ_INIT = function () {
     { k: 'custo', l: 'Preço de custo s/ IVA (€) · vem do XD', t: 'num' },
     { k: 'precoMaquina', l: 'Preço de venda na máquina (€, por unidade)', t: 'num' },
     { k: 'maquinas', l: 'Aparece no abastecimento das máquinas', t: 'bool' },
+    { k: 'maqTipo', l: 'Em que máquina entra', t: 'sel', o: { cafe: 'Máquina de café (bebidas quentes)', snack: 'Máquina de snacks (comida e bebidas frias)' } },
     { k: 'peca', l: 'É peça (aparece nas assistências)', t: 'bool' },
     { k: 'vidaServicos', l: 'Duração típica da peça (n.º de serviços, opcional)', t: 'num' },
   );
@@ -310,7 +311,10 @@ window.MAQ_INIT = function () {
   const qTxt = q => String(Math.round(q * 100) / 100).replace('.', ',');
   function cartItems() {
     const c = S.maqCart, mode = MODOS[c.modo][2];
-    let L = D('artigos').filter(a => a.ativo !== false && (mode === 'maquinas' ? a.maquinas : mode === 'peca' ? a.peca : (a.maquinas || a.peca)));
+    /* cada máquina mostra só os artigos do seu tipo: café, snacks ou os dois (combinada) */
+    const mt = c.maq ? M(c.maq)?.tipo : null, quer = mt === 'vending_comida' ? ['snack'] : (mt === 'vending_cafe' || mt === 'cafe') ? ['cafe'] : null;
+    const doTipo = a => !quer || !a.maqTipo || quer.includes(a.maqTipo);
+    let L = D('artigos').filter(a => a.ativo !== false && (mode === 'maquinas' ? a.maquinas && doTipo(a) : mode === 'peca' ? a.peca : (a.maquinas || a.peca)));
     const q = norm(c.q);
     if (q) L = D('artigos').filter(a => a.ativo !== false && norm([a.nome, a.ref].join(' ')).includes(q));
     const freq = new Map();
