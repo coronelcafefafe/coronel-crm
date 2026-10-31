@@ -8,7 +8,7 @@ window.MAQ_INIT = function () {
   const DIA_C = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
   const TIPO_M = { vending_cafe: 'Vending café', vending_comida: 'Vending comida', combinado: 'Vending combinado', cafe: 'Máquina de café' };
   const tipoT = m => TIPO_M[m?.tipo] || (m?.tipo === 'vending' ? 'Vending' : 'Máquina');
-  const NOVAS = ['maquinas', 'maq_local', 'maq_assist', 'stock_mov', 'maq_fat', 'maq_leituras'];
+  const NOVAS = ['maquinas', 'maq_local', 'maq_assist', 'stock_mov', 'maq_fat', 'maq_leituras', 'maq_cofre'];
   NOVAS.forEach(c => { if (!COLS.includes(c)) COLS.push(c); S.data[c] = new Map(); });
 
   /* ---------- ícones, navegação, estilos ---------- */
@@ -225,12 +225,14 @@ window.MAQ_INIT = function () {
       ${m.nSerie ? `<div class="note">N.º de série ${esc(m.nSerie)}</div>` : ''}
       <div class="note">${temGeo(m) ? `<a href="${esc(mapaU(null, m))}" target="_blank" rel="noopener" data-act="link">Ver localização no mapa</a>` : 'Sem localização GPS.'}${S.canWrite ? ` · <button class="lnk" style="padding:0" data-act="maqGeo" data-id="${m.id}">${temGeo(m) ? 'Atualizar' : 'Guardar'} localização aqui</button>` : ''}</div>
       ${contadorAtual(m.id) ? `<div class="note">Contador: <b>${nF(contadorAtual(m.id).c)}</b> serviços (${esc(fD(contadorAtual(m.id).data))})</div>` : ''}
+      ${temCofre(m) && ultCofre(m.id) ? `<div class="note">Último cofre levantado: <b>${esc(fDiaHora(ultCofre(m.id).data))}</b> · ${esc(nameOf(ultCofre(m.id).criadoPor))}</div>` : ''}
       ${m.entidade ? `<div class="note">${m.freq ? `Abastecimento ${esc(freqTxt(m).toLowerCase())} · próxima visita <b>${esc(fDia(proxima(m)))}</b>` : 'Sem frequência de abastecimento: defina em Editar para entrar na rota.'}${ultimoAb(m.id) ? ` · último ${esc(fDia(ultimoAb(m.id)))}` : ''}</div>` : ''}</div>
       <div>${estB(m)}</div>
       ${S.canWrite ? `<button class="btn" data-act="edit" data-col="maquinas" data-id="${m.id}">Editar</button>` : ''}</div></div>`;
     if (S.canWrite) h += `<div class="mq-acts" style="margin-top:14px">
       <button class="btn pri" data-act="maqCart" data-c="abastecimento" data-id="${m.id}">${ic('box', 18)}Abastecer</button>
       <button class="btn ${aberta ? 'gold' : ''}" data-act="maqAssist" data-id="${m.id}">${ic('tool', 18)}${aberta ? 'Assistência aberta' : 'Assistência'}</button>
+      ${temCofre(m) ? `<button class="btn" data-act="maqCofre" data-id="${m.id}">${ic('euro', 18)}Levantar cofre</button>` : ''}
       <button class="btn" data-act="maqMover" data-id="${m.id}">${ic('pin', 18)}Mover</button>
       <button class="btn" data-act="maqParada" data-id="${m.id}">${ic('cal', 18)}Máquina parada</button>
       ${S.verValores ? `<button class="btn" data-act="maqFat" data-id="${m.id}">${ic('euro', 18)}Faturação</button>` : `<button class="btn" data-act="maqCart" data-c="retirada" data-id="${m.id}">Retirar produtos</button>`}</div>`;
@@ -297,6 +299,13 @@ window.MAQ_INIT = function () {
     entrada: ['Entrada no armazém', 'Guardar entrada', 'stock'],
     acerto: ['Acerto de stock', 'Guardar acerto', 'stock'],
   };
+  /* cofre: só registo de levantamento (o dinheiro é contado na empresa) */
+  const temCofre = m => !!(m && m.entidade && m.tipo !== 'cafe' && m.estado !== 'armazem');
+  const ultCofre = id => { let u = null; D('maq_cofre').forEach(x => { if (x.maquina === id && (!u || x.data > u.data)) u = x; }); return u; };
+  const fDiaHora = t => { const d = new Date(t); return d.toLocaleDateString('pt-PT', { day: 'numeric', month: 'short' }) + ', ' + d.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' }); };
+  /* produtos ao quilo (café, chocolate, açúcar, leite) somam de 0,5 em 0,5 */
+  const passoArt = a => { const n = (a && a.nome) || ''; if (/(caps|c[aá]psula|pastilha|monodose|\bcx\b|cx\/|\d\s*x\s*\d|copo|motor|empacotad)/i.test(n)) return 1; return /(^|[^.,\d])1\s*kg\b/i.test(n) || (/(caf[eé]|chocolate|leite|a[çc][uú]car)/i.test(n) && /(vending|em p[oó](\s|$))/i.test(n)) ? 0.5 : 1; };
+  const qTxt = q => String(Math.round(q * 100) / 100).replace('.', ',');
   function cartItems() {
     const c = S.maqCart, mode = MODOS[c.modo][2];
     let L = D('artigos').filter(a => a.ativo !== false && (mode === 'maquinas' ? a.maquinas : mode === 'peca' ? a.peca : (a.maquinas || a.peca)));
@@ -314,14 +323,14 @@ window.MAQ_INIT = function () {
     return `<label class="srch" style="margin-bottom:10px">${ic('search', 18)}<input id="mq-q" data-mqq="1" type="search" placeholder="Procurar produto" value="${esc(c.q)}" autocomplete="off"></label>
     <div class="mq-grid">${L.map(a => { const q = +c.items[a.id] || 0; return `<div class="mq-it ${q ? 'on' : ''}">
       <div data-act="mqAdd" data-id="${a.id}" data-c="1"><div class="ph-img">${a.foto ? `<img src="${esc(fotoUrl(a.foto))}" alt="" loading="lazy">` : esc(initials(a.nome))}</div><div class="nm">${esc(a.nome)}</div></div>
-      ${q ? `<span class="mq-q ${q < 0 ? 'neg' : ''}" data-act="mqSet" data-id="${a.id}">${q}</span><div class="mq-pm"><button data-act="mqAdd" data-id="${a.id}" data-c="-1" aria-label="Menos">−</button><button data-act="mqAdd" data-id="${a.id}" data-c="1" aria-label="Mais">+</button></div>` : ''}</div>` }).join('') || '<p class="note">Nenhum produto. Procure pelo nome ou marque os artigos "Aparece no abastecimento" no catálogo.</p>'}</div>
+      ${q ? `<span class="mq-q ${q < 0 ? 'neg' : ''}" data-act="mqSet" data-id="${a.id}">${qTxt(q)}${passoArt(a) < 1 ? ' kg' : ''}</span><div class="mq-pm"><button data-act="mqAdd" data-id="${a.id}" data-c="-1" aria-label="Menos">−</button><button data-act="mqAdd" data-id="${a.id}" data-c="1" aria-label="Mais">+</button></div>` : ''}</div>` }).join('') || '<p class="note">Nenhum produto. Procure pelo nome ou marque os artigos "Aparece no abastecimento" no catálogo.</p>'}</div>
     ${c.maq && !semCont(c.maq) && (c.modo === 'abastecimento' || c.modo === 'retirada') ? `<div class="fld" style="margin-top:12px;max-width:260px"><label for="mq-cont">Contador de serviços (opcional)</label><input id="mq-cont" type="number" inputmode="numeric" min="0" class="inp" value="${esc(c.cont || '')}" data-mqc="1" placeholder="${contadorAtual(c.maq) ? 'último: ' + nF(contadorAtual(c.maq).c) : 'Ex.: 14000'}"></div>` : ''}
-    <div class="mq-bar"><span class="note"><b>${n}</b> produto${n === 1 ? '' : 's'} · <b>${un}</b> un.${S.verValores && cst ? ` · custo ${eur(cst)}` : ''}</span><span class="grow"></span><button class="btn" data-act="close">Cancelar</button><button class="btn pri" data-act="mqOk" ${n ? '' : 'disabled'}>${MODOS[c.modo][1]}</button></div>`;
+    <div class="mq-bar"><span class="note"><b>${n}</b> produto${n === 1 ? '' : 's'} · <b>${qTxt(un)}</b> un.${S.verValores && cst ? ` · custo ${eur(cst)}` : ''}</span><span class="grow"></span><button class="btn" data-act="close">Cancelar</button><button class="btn pri" data-act="mqOk" ${n ? '' : 'disabled'}>${MODOS[c.modo][1]}</button></div>`;
   }
   function cartOpen(modo, maq, assist) {
     S.maqCart = { modo, maq: maq || null, assist: assist || null, items: {}, q: '' };
     const m = maq ? M(maq) : null;
-    openSheet(`<div class="sh"><h2>${MODOS[modo][0]}${m ? ' ' + esc(m.numero) : ''}</h2><button class="ib" data-act="close" aria-label="Fechar">${ic('x')}</button></div><div class="sb"><p class="note" style="margin:0 0 10px">${modo === 'acerto' ? 'Toque para somar e use − para tirar (pode ficar negativo).' : 'Toque no produto para somar uma unidade. Toque no número para escrever a quantidade.'}</p><div id="mq-cart">${cartBody()}</div></div>`);
+    openSheet(`<div class="sh"><h2>${MODOS[modo][0]}${m ? ' ' + esc(m.numero) : ''}</h2><button class="ib" data-act="close" aria-label="Fechar">${ic('x')}</button></div><div class="sb"><p class="note" style="margin:0 0 10px">${modo === 'acerto' ? 'Toque para somar e use − para tirar (pode ficar negativo).' : 'Toque no produto para somar uma unidade (café, chocolate, açúcar e leite ao quilo: 0,5 kg). Toque no número para escrever a quantidade.'}</p><div id="mq-cart">${cartBody()}</div></div>`);
   }
   const cartRedraw = () => { const el = document.getElementById('mq-cart'); if (!el) return; const f = document.activeElement?.id === 'mq-q'; const pos = f ? document.activeElement.selectionStart : null; el.innerHTML = cartBody(); if (f) { const i = document.getElementById('mq-q'); i.focus(); try { i.setSelectionRange(pos, pos) } catch (_) { } } };
   document.addEventListener('input', e => { if (e.target.dataset && e.target.dataset.mqq && S.maqCart) { S.maqCart.q = e.target.value; cartRedraw(); } if (e.target.dataset && e.target.dataset.mqc && S.maqCart) S.maqCart.cont = e.target.value; });
@@ -340,7 +349,7 @@ window.MAQ_INIT = function () {
     maqPer: d => { S.f.maqper = d.c; render(); },
     maqNova: d => openForm('maquinas', null, { numero: d.c }),
     maqCart: d => cartOpen(d.c, d.id, d.a),
-    mqAdd: d => { const c = S.maqCart; if (!c) return; let v = (+c.items[d.id] || 0) + (+d.c); if (v < 0 && c.modo !== 'acerto') v = 0; if (v) c.items[d.id] = v; else delete c.items[d.id]; cartRedraw(); },
+    mqAdd: d => { const c = S.maqCart; if (!c) return; let v = Math.round(((+c.items[d.id] || 0) + (+d.c) * passoArt(art(d.id))) * 100) / 100; if (v < 0 && c.modo !== 'acerto') v = 0; if (v) c.items[d.id] = v; else delete c.items[d.id]; cartRedraw(); },
     mqSet: d => { const c = S.maqCart; if (!c) return; const v = prompt('Quantidade', String(c.items[d.id] || '')); if (v === null) return; const n = parseFloat(String(v).replace(',', '.')); if (!isFinite(n) || (!n)) delete c.items[d.id]; else c.items[d.id] = c.modo === 'acerto' ? n : Math.abs(n); cartRedraw(); },
     mqOk: async (d, b) => {
       const c = S.maqCart; if (!c) return;
@@ -350,6 +359,21 @@ window.MAQ_INIT = function () {
       const cont = parseInt(c.cont); if (c.maq && isFinite(cont) && cont >= 0) await insertRows('maq_leituras', [{ maquina: c.maq, contador: cont, data: TODAY() }]);
       const n = rows.length; closeSheet(); toast(c.modo === 'abastecimento' ? `Abastecimento registado (${n} produto${n === 1 ? '' : 's'})` : 'Registado');
       S.maqCart = null;
+    },
+    maqCofre: async (d, b) => {
+      const m = M(d.id); if (!m || !canAct()) return;
+      if (!b.dataset.armed) { b.dataset.armed = 1; b.dataset.t0 = b.innerHTML; b.textContent = 'Confirmar: cofre levantado'; b.classList.add('pri'); setTimeout(() => { if (b.isConnected && b.dataset.armed) { delete b.dataset.armed; b.innerHTML = b.dataset.t0; b.classList.remove('pri'); } }, 6000); return; }
+      delete b.dataset.armed; b.disabled = true; b.textContent = 'A registar…';
+      const r = await insertRows('maq_cofre', [{ maquina: m.id }]);
+      if (!r) { b.disabled = false; b.innerHTML = b.dataset.t0; b.classList.remove('pri'); return; }
+      let avisado = false;
+      try {
+        const { data: { session } } = await S.db.auth.getSession();
+        const x = await fetch(CFG.url + '/functions/v1/cofre-aviso', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (session?.access_token || ''), apikey: CFG.anonKey }, body: JSON.stringify({ cofre: r[0].id }) });
+        avisado = x.ok;
+      } catch (_) { }
+      toast(avisado ? `Cofre da máquina ${m.numero} registado. O André foi avisado.` : `Cofre da máquina ${m.numero} registado. O aviso por email não seguiu.`);
+      render();
     },
     maqGeo: d => {
       const m = M(d.id); if (!m || !canAct()) return;
