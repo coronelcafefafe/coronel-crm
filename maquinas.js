@@ -60,7 +60,7 @@ window.MAQ_INIT = function () {
 .mq-pm button+button{border-left:1px solid var(--line)}
 .mq-bar{position:sticky;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:10px 0 0;margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .mq-bar .note{flex:1 1 100%}@media(min-width:560px){.mq-bar .note{flex:1 1 auto}}
-.mq-sw{display:flex;gap:6px;margin:0 0 10px}.mq-tl .row{cursor:default}
+.mq-sw{display:flex;gap:6px;margin:0 0 10px}.mq-tl .row{cursor:default}.mq-tl .row[role=button]{cursor:pointer}.mq-tl .row[data-act=maqMovVer] .r1::after{content:' ›';color:var(--ink-3)}
 .pg a.btn{text-decoration:none;color:inherit}
 .pg button.lnk{background:none;border:0;padding:0;font:inherit;font-size:14px;color:#6E6E73;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
 .mq-big{font-family:'Cormorant Garamond',serif;font-size:40px;line-height:1}
@@ -278,7 +278,7 @@ window.MAQ_INIT = function () {
     grp.forEach(g => {
       const n = g.L.reduce((s, x) => s + (+x.qt || 0), 0);
       const c = g.L.reduce((s, x) => s + (x.custo != null ? +x.custo * +x.qt : 0), 0);
-      ev.push({ q: g.quando, t: g.tipo === 'retirada' ? 'Produtos retirados' : 'Abastecimento', s: g.L.map(x => `${+x.qt} ${art(x.artigo)?.nome || 'artigo'}`).join(', '), r: S.verValores && c ? eur(c) : `${n} un.`, por: g.por });
+      ev.push({ q: g.quando, t: (g.tipo === 'retirada' ? 'Produtos retirados' : 'Abastecimento') + ` · ${g.L.length} produto${g.L.length === 1 ? '' : 's'}`, s: g.L.map(x => `${qTxt(+x.qt)} ${art(x.artigo)?.nome || 'artigo'}`).join(', '), r: S.verValores && c ? eur(c) : `${qTxt(n)} un.`, por: g.por, mov: g.L.map(x => x.id).join(',') });
     });
     D('maq_assist').filter(a => a.maquina === m.id && a.estado === 'fechada').forEach(a => {
       const c = D('stock_mov').filter(x => x.assist === a.id).reduce((s, x) => s + (x.custo != null ? +x.custo * +x.qt : 0), 0);
@@ -288,7 +288,7 @@ window.MAQ_INIT = function () {
     if (S.verValores) D('maq_fat').filter(f => f.maquina === m.id).forEach(f => ev.push({ q: f.data + 'T23:59', t: 'Faturação', s: f.notas || (f.entidade ? entName(f.entidade) : ''), r: eur(f.valor), por: f.criadoPor, fat: f.id }));
     ev.sort((a, b) => String(b.q).localeCompare(String(a.q)));
     const lim = S.lim.maqtl || 30;
-    return `<div class="panel mq-tl" style="margin-top:14px"><div class="ph"><h2>Histórico</h2></div>${ev.length ? ev.slice(0, lim).map(e => `<div class="row"${e.fat ? ` role="button" data-act="maqFatDel" data-id="${e.fat}" title="Carregue para apagar este registo"` : ''}><span class="rt"><span class="r1">${esc(e.t)}</span><span class="r2">${esc(e.s)}</span></span><span class="rr"><span class="note">${esc(fD(String(e.q).slice(0, 10)))} · ${esc(nameOf(e.por))}</span>${e.r ? `<span class="num">${esc(e.r)}</span>` : ''}</span></div>`).join('') + (ev.length > lim ? `<button class="more" data-act="more" data-v="maqtl">Mostrar mais (${ev.length - lim})</button>` : '') : '<div class="empty"><b>Sem movimentos</b>Os abastecimentos, assistências e mudanças aparecem aqui.</div>'}</div>`;
+    return `<div class="panel mq-tl" style="margin-top:14px"><div class="ph"><h2>Histórico</h2></div>${ev.length ? ev.slice(0, lim).map(e => `<div class="row"${e.fat ? ` role="button" data-act="maqFatDel" data-id="${e.fat}" title="Carregue para apagar este registo"` : e.mov ? ` role="button" data-act="maqMovVer" data-id="${e.mov}" title="Ver o que foi carregado"` : ''}><span class="rt"><span class="r1">${esc(e.t)}</span><span class="r2">${esc(e.s)}</span></span><span class="rr"><span class="note">${esc(fD(String(e.q).slice(0, 10)))} · ${esc(nameOf(e.por))}</span>${e.r ? `<span class="num">${esc(e.r)}</span>` : ''}</span></div>`).join('') + (ev.length > lim ? `<button class="more" data-act="more" data-v="maqtl">Mostrar mais (${ev.length - lim})</button>` : '') : '<div class="empty"><b>Sem movimentos</b>Os abastecimentos, assistências e mudanças aparecem aqui.</div>'}</div>`;
   }
 
   /* ---------- carrinho (abastecer, retirar, peças, stock) ---------- */
@@ -355,6 +355,21 @@ window.MAQ_INIT = function () {
     maqPer: d => { S.f.maqper = d.c; render(); },
     maqNova: d => openForm('maquinas', null, { numero: d.c }),
     maqCart: d => cartOpen(d.c, d.id, d.a),
+    /* histórico: ver o que foi carregado (ou retirado) num abastecimento */
+    maqMovVer: d => {
+      const ids = String(d.id || '').split(','), L = ids.map(i => S.data.stock_mov.get(i)).filter(Boolean);
+      if (!L.length) return;
+      const x0 = L[0], m = M(x0.maquina), ret = x0.tipo === 'retirada';
+      const quando = x0.criado ? new Date(x0.criado) : null;
+      const hora = quando ? quando.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' }) : '';
+      const lt = D('maq_leituras').find(l => l.maquina === x0.maquina && x0.criado && l.criado && Math.abs(new Date(l.criado) - quando) < 5 * 60000);
+      const tot = L.reduce((s, x) => s + (x.custo != null ? +x.custo * +x.qt : 0), 0);
+      L.sort((a, b) => String(art(a.artigo)?.nome || '').localeCompare(String(art(b.artigo)?.nome || ''), 'pt'));
+      openSheet(`<div class="sh"><h2>${ret ? 'Produtos retirados' : 'Abastecimento'}${m ? ' · máquina ' + esc(m.numero) : ''}</h2><button class="ib" data-act="close" aria-label="Fechar">${ic('x')}</button></div><div class="sb">
+        <p class="note" style="margin:0 0 10px">${esc(fD(x0.data || String(x0.criado || '').slice(0, 10)))}${hora ? ' às ' + esc(hora) : ''} · ${esc(nameOf(x0.criadoPor))}${m && m.entidade ? ' · ' + esc(entName(m.entidade)) : ''}${lt ? ` · contador ${esc(nF(lt.contador))}` : ''}</p>
+        <table class="tt"><thead><tr><th>Produto</th><th class="num">Qt.</th>${S.verValores ? '<th class="num">Custo</th>' : ''}</tr></thead><tbody>${L.map(x => `<tr><td>${esc(art(x.artigo)?.nome || 'Artigo')}${art(x.artigo)?.ref ? `<div class="note">${esc(art(x.artigo).ref)}</div>` : ''}</td><td class="num">${qTxt(+x.qt)}</td>${S.verValores ? `<td class="num">${x.custo != null ? eur(x.custo * x.qt) : '—'}</td>` : ''}</tr>`).join('')}</tbody>
+        ${S.verValores && tot ? `<tfoot><tr><td><b>Total</b></td><td></td><td class="num"><b>${eur(tot)}</b></td></tr></tfoot>` : ''}</table></div>`);
+    },
     mqAdd: d => { const c = S.maqCart; if (!c) return; let v = Math.round(((+c.items[d.id] || 0) + (+d.c) * passoArt(art(d.id))) * 100) / 100; if (v < 0 && c.modo !== 'acerto') v = 0; if (v) c.items[d.id] = v; else delete c.items[d.id]; cartRedraw(); },
     mqSet: d => { const c = S.maqCart; if (!c) return; const v = prompt('Quantidade', String(c.items[d.id] || '')); if (v === null) return; const n = parseFloat(String(v).replace(',', '.')); if (!isFinite(n) || (!n)) delete c.items[d.id]; else c.items[d.id] = c.modo === 'acerto' ? n : Math.abs(n); cartRedraw(); },
     mqOk: async (d, b) => {
