@@ -36,6 +36,7 @@ window.MAQ_INIT = function () {
   ];
   F.artigos.push(
     { k: 'custo', l: 'Preço de custo s/ IVA (€) · vem do XD', t: 'num' },
+    { k: 'unCaixa', l: 'Unidades por embalagem do XD (caixa, tabuleiro) · as máquinas abastecem à unidade', t: 'num', ph: '1' },
     { k: 'precoMaquina', l: 'Preço de venda na máquina (€, por unidade)', t: 'num' },
     { k: 'maquinas', l: 'Aparece no abastecimento das máquinas', t: 'bool' },
     { k: 'maqTipo', l: 'Em que máquina entra', t: 'sel', o: { cafe: 'Máquina de café (bebidas quentes)', snack: 'Máquina de snacks (comida e bebidas frias)' } },
@@ -75,6 +76,10 @@ window.MAQ_INIT = function () {
   const estB = m => badge(...(EST[m.estado] || ['—', 'mute']));
   const art = id => S.data.artigos.get(id);
   const custoArt = a => a ? (a.custo != null && a.custo !== '' ? +a.custo : null) : null;
+  /* o custo do XD é por embalagem (caixa, tabuleiro); nas máquinas entra à unidade */
+  const unCx = a => Math.max(1, +(a && a.unCaixa) || 1);
+  const custoUn = a => { const c = custoArt(a); return c == null ? null : c / unCx(a); };
+  const MAQ_MODOS = ['abastecimento', 'retirada'];
   const movsM = id => D('stock_mov').filter(x => x.maquina === id);
   const desde = per => { const t = TODAY(); return per === 'mes' ? t.slice(0, 8) + '01' : per === '3m' ? addMonths(t, -3) : per === 'ano' ? t.slice(0, 4) + '-01-01' : '0000'; };
   const PER = [['mes', 'Este mês'], ['3m', '3 meses'], ['ano', 'Este ano'], ['tudo', 'Sempre']];
@@ -325,7 +330,7 @@ window.MAQ_INIT = function () {
   function cartBody() {
     const c = S.maqCart, L = cartItems();
     const n = Object.values(c.items).filter(v => v).length, un = Object.values(c.items).reduce((s, v) => s + (+v || 0), 0);
-    const cst = Object.entries(c.items).reduce((s, [id, q]) => s + (custoArt(art(id)) || 0) * (+q || 0), 0);
+    const cst = Object.entries(c.items).reduce((s, [id, q]) => s + ((MAQ_MODOS.includes(c.modo) ? custoUn : custoArt)(art(id)) || 0) * (+q || 0), 0);
     return `<label class="srch" style="margin-bottom:10px">${ic('search', 18)}<input id="mq-q" data-mqq="1" type="search" placeholder="Procurar produto" value="${esc(c.q)}" autocomplete="off"></label>
     <div class="mq-grid">${L.map(a => { const q = +c.items[a.id] || 0; return `<div class="mq-it ${q ? 'on' : ''}">
       <div data-act="mqAdd" data-id="${a.id}" data-c="1"><div class="ph-img">${a.foto ? `<img src="${esc(fotoUrl(a.foto))}" alt="" loading="lazy">` : esc(initials(a.nome))}</div><div class="nm">${esc(a.nome)}</div></div>
@@ -374,7 +379,7 @@ window.MAQ_INIT = function () {
     mqSet: d => { const c = S.maqCart; if (!c) return; const v = prompt('Quantidade', String(c.items[d.id] || '')); if (v === null) return; const n = parseFloat(String(v).replace(',', '.')); if (!isFinite(n) || (!n)) delete c.items[d.id]; else c.items[d.id] = c.modo === 'acerto' ? n : Math.abs(n); cartRedraw(); },
     mqOk: async (d, b) => {
       const c = S.maqCart; if (!c) return;
-      const rows = Object.entries(c.items).filter(([, q]) => +q).map(([id, q]) => ({ tipo: c.modo, artigo: id, qt: +q, custo: custoArt(art(id)), maquina: c.maq, assist: c.assist, data: TODAY() }));
+      const rows = Object.entries(c.items).filter(([, q]) => +q).map(([id, q]) => ({ tipo: c.modo, artigo: id, qt: +q, custo: (MAQ_MODOS.includes(c.modo) ? custoUn : custoArt)(art(id)), maquina: c.maq, assist: c.assist, data: TODAY() }));
       b.disabled = true; const ok = await insertRows('stock_mov', rows); b.disabled = false;
       if (!ok) return;
       const cont = parseInt(c.cont); if (c.maq && isFinite(cont) && cont >= 0) await insertRows('maq_leituras', [{ maquina: c.maq, contador: cont, data: TODAY() }]);
@@ -589,7 +594,7 @@ window.MAQ_INIT = function () {
       const s = g(x.artigo), q = +x.qt || 0;
       if (x.tipo === 'inicial') { s.ini += q; if (!s.d0 || x.data < s.d0) s.d0 = x.data; }
       else if (x.tipo === 'entrada') s.ent += q; else if (x.tipo === 'acerto') s.ace += q;
-      else if (x.tipo === 'abastecimento') s.maq += q; else if (x.tipo === 'retirada') s.ret += q; else if (x.tipo === 'peca') s.pec += q;
+      else if (x.tipo === 'abastecimento') s.maq += q / unCx(art(x.artigo)); else if (x.tipo === 'retirada') s.ret += q / unCx(art(x.artigo)); else if (x.tipo === 'peca') s.pec += q;
     });
     const byRef = new Map(D('artigos').filter(a => a.ref).map(a => [String(a.ref), a.id]));
     xdVendas().forEach(doc => (doc.linhas || []).forEach(l => {
@@ -610,7 +615,7 @@ window.MAQ_INIT = function () {
       ${S.canWrite ? `<button class="btn pri" data-act="stockCart" data-c="entrada">${ic('plus', 18)}<span>Entrada</span></button><button class="btn" data-act="stockCart" data-c="inicial">Stock inicial</button><button class="btn" data-act="stockCart" data-c="acerto">Acerto</button>` : ''}</div>
       <div class="chips">${chips.map(x => `<button class="chipb ${x === c ? 'on' : ''}" data-act="chip" data-v="stock" data-c="${esc(x)}">${esc(x)}</button>`).join('')}</div></div>`;
     const sum = `<p class="note" style="margin:0 0 10px"><b>${SM.size}</b> artigo${SM.size === 1 ? '' : 's'} com movimentos · valor em stock <b>${eur(val)}</b> (preço de custo). Stock = inicial + entradas ± acertos − abastecimentos e peças das máquinas − vendas faturadas no XD desde o stock inicial.</p>`;
-    const row = x => rowH({ act: 'open', col: 'artigos', id: x.a.id, title: x.a.nome, sub: `${x.a.ref ? x.a.ref + ' · ' : ''}inicial ${x.s.ini} · entradas ${x.s.ent + x.s.ace} · máquinas ${x.s.maq - x.s.ret} · peças ${x.s.pec} · vendas XD ${x.s.xd}`, right: String(Math.round(x.s.atual * 100) / 100), badges: x.s.atual < 0 ? badge('Negativo', 'bad') : '' });
+    const row = x => rowH({ act: 'open', col: 'artigos', id: x.a.id, title: x.a.nome, sub: `${x.a.ref ? x.a.ref + ' · ' : ''}inicial ${x.s.ini} · entradas ${x.s.ent + x.s.ace} · máquinas ${qTxt(x.s.maq - x.s.ret)} · peças ${x.s.pec} · vendas XD ${x.s.xd}`, right: String(Math.round(x.s.atual * 100) / 100), badges: x.s.atual < 0 ? badge('Negativo', 'bad') : '' });
     return `<div class="pg">${top}${sum}${listBlock('stock', L, row, SM.size ? '<b>Nenhum artigo neste filtro</b>Veja "Todos".' : '<b>Sem movimentos de stock</b>Comece por "Stock inicial": conte o armazém e registe as quantidades.')}</div>`;
   });
 
