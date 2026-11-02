@@ -36,7 +36,7 @@ window.MAQ_INIT = function () {
   ];
   F.artigos.push(
     { k: 'custo', l: 'Preço de custo s/ IVA (€) · vem do XD', t: 'num' },
-    { k: 'unCaixa', l: 'Unidades por embalagem do XD (caixa, tabuleiro) · as máquinas abastecem à unidade', t: 'num', ph: '1' },
+    { k: 'unCaixa', l: 'Unidades da máquina por unidade do XD (ex.: caixa de 30 → 30; XD à paletina e máquina em packs de 100 → 0,01)', t: 'num', ph: '1' },
     { k: 'precoMaquina', l: 'Preço de venda na máquina (€, por unidade)', t: 'num' },
     { k: 'maquinas', l: 'Aparece no abastecimento das máquinas', t: 'bool' },
     { k: 'maqTipo', l: 'Em que máquina entra', t: 'sel', o: { cafe: 'Máquina de café (bebidas quentes)', snack: 'Máquina de snacks (comida e bebidas frias)' } },
@@ -77,7 +77,7 @@ window.MAQ_INIT = function () {
   const art = id => S.data.artigos.get(id);
   const custoArt = a => a ? (a.custo != null && a.custo !== '' ? +a.custo : null) : null;
   /* o custo do XD é por embalagem (caixa, tabuleiro); nas máquinas entra à unidade */
-  const unCx = a => Math.max(1, +(a && a.unCaixa) || 1);
+  const unCx = a => (+(a && a.unCaixa) > 0 ? +a.unCaixa : 1);
   const custoUn = a => { const c = custoArt(a); return c == null ? null : c / unCx(a); };
   const MAQ_MODOS = ['abastecimento', 'retirada'];
   const movsM = id => D('stock_mov').filter(x => x.maquina === id);
