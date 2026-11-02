@@ -36,6 +36,7 @@ window.MAQ_INIT = function () {
   ];
   F.artigos.push(
     { k: 'custo', l: 'Preço de custo s/ IVA (€) · vem do XD', t: 'num' },
+    { k: 'nomeMaq', l: 'Nome no ecrã de abastecimento (opcional, ex.: Açúcar 4 g · pacote de 50)', t: 'text', full: 1 },
     { k: 'unCaixa', l: 'Unidades da máquina por unidade do XD (ex.: caixa de 30 → 30; XD à paletina e máquina em packs de 100 → 0,01)', t: 'num', ph: '1' },
     { k: 'precoMaquina', l: 'Preço de venda na máquina (€, por unidade)', t: 'num' },
     { k: 'maquinas', l: 'Aparece no abastecimento das máquinas', t: 'bool' },
@@ -75,6 +76,8 @@ window.MAQ_INIT = function () {
   const EST = { ativa: ['Ativa', 'ok'], parada: ['Parada', 'bad'], armazem: ['No armazém', 'mute'], abate: ['Abatida', 'mute'] };
   const estB = m => badge(...(EST[m.estado] || ['—', 'mute']));
   const art = id => S.data.artigos.get(id);
+  /* nome curto para o ecrã das máquinas (ex.: «Açúcar 4 g · pacote de 50»); sem ele usa o nome do XD */
+  const nmA = a => (a && (a.nomeMaq || a.nome)) || '';
   const custoArt = a => a ? (a.custo != null && a.custo !== '' ? +a.custo : null) : null;
   /* o custo do XD é por embalagem (caixa, tabuleiro); nas máquinas entra à unidade */
   const unCx = a => (+(a && a.unCaixa) > 0 ? +a.unCaixa : 1);
@@ -267,7 +270,7 @@ window.MAQ_INIT = function () {
       ${semCont(a.maquina) ? '' : `<div class="fld"><label for="as-cont">Contador de serviços</label><input id="as-cont" data-as="${a.id}" data-k="contador" data-num="1" type="number" inputmode="numeric" min="0" class="inp" value="${esc(dr(a, 'contador'))}" placeholder="${contadorAtual(a.maquina) ? 'último: ' + nF(contadorAtual(a.maquina).c) : 'Ex.: 14000'}"></div>`}
       <div class="fld" style="align-self:end"><label class="tog"><input id="as-prev" type="checkbox" data-as="${a.id}" data-k="preventiva" ${a.preventiva ? 'checked' : ''}><span>Troca preventiva (a peça ainda não tinha avariado)</span></label></div></div>
       <div class="eyebrow" style="margin:14px 0 6px">Peças usadas</div>
-      ${pec.length ? `<table class="tt"><tbody>${pec.map(x => `<tr><td>${esc(art(x.artigo)?.nome || 'Artigo')}</td><td class="num">${+x.qt}</td>${S.verValores ? `<td class="num">${x.custo != null ? eur(x.custo * x.qt) : '—'}</td>` : ''}</tr>`).join('')}</tbody></table>` : '<p class="note" style="margin:0">Ainda sem peças.</p>'}
+      ${pec.length ? `<table class="tt"><tbody>${pec.map(x => `<tr><td>${esc(nmA(art(x.artigo)) || 'Artigo')}</td><td class="num">${+x.qt}</td>${S.verValores ? `<td class="num">${x.custo != null ? eur(x.custo * x.qt) : '—'}</td>` : ''}</tr>`).join('')}</tbody></table>` : '<p class="note" style="margin:0">Ainda sem peças.</p>'}
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px"><button class="btn" data-act="maqCart" data-c="peca" data-id="${a.maquina}" data-a="${a.id}">${ic('plus', 16)}Peças</button>
       <span class="grow"></span><button class="btn" data-act="maqAssistGuardar" data-id="${a.id}">Guardar</button><button class="btn gold" data-act="maqAssistFechar" data-id="${a.id}">Fechar assistência</button></div></div></div>`;
   }
@@ -283,7 +286,7 @@ window.MAQ_INIT = function () {
     grp.forEach(g => {
       const n = g.L.reduce((s, x) => s + (+x.qt || 0), 0);
       const c = g.L.reduce((s, x) => s + (x.custo != null ? +x.custo * +x.qt : 0), 0);
-      ev.push({ q: g.quando, t: (g.tipo === 'retirada' ? 'Produtos retirados' : 'Abastecimento') + ` · ${g.L.length} produto${g.L.length === 1 ? '' : 's'}`, s: g.L.map(x => `${qTxt(+x.qt)} ${art(x.artigo)?.nome || 'artigo'}`).join(', '), r: S.verValores && c ? eur(c) : `${qTxt(n)} un.`, por: g.por, mov: g.L.map(x => x.id).join(',') });
+      ev.push({ q: g.quando, t: (g.tipo === 'retirada' ? 'Produtos retirados' : 'Abastecimento') + ` · ${g.L.length} produto${g.L.length === 1 ? '' : 's'}`, s: g.L.map(x => `${qTxt(+x.qt)} ${nmA(art(x.artigo)) || 'artigo'}`).join(', '), r: S.verValores && c ? eur(c) : `${qTxt(n)} un.`, por: g.por, mov: g.L.map(x => x.id).join(',') });
     });
     D('maq_assist').filter(a => a.maquina === m.id && a.estado === 'fechada').forEach(a => {
       const c = D('stock_mov').filter(x => x.assist === a.id).reduce((s, x) => s + (x.custo != null ? +x.custo * +x.qt : 0), 0);
@@ -321,7 +324,7 @@ window.MAQ_INIT = function () {
     const doTipo = a => !quer || !a.maqTipo || quer.includes(a.maqTipo);
     let L = D('artigos').filter(a => a.ativo !== false && (mode === 'maquinas' ? a.maquinas && doTipo(a) : mode === 'peca' ? a.peca : (a.maquinas || a.peca)));
     const q = norm(c.q);
-    if (q) L = D('artigos').filter(a => a.ativo !== false && norm([a.nome, a.ref].join(' ')).includes(q));
+    if (q) L = D('artigos').filter(a => a.ativo !== false && norm([a.nome, a.nomeMaq, a.ref].join(' ')).includes(q));
     const freq = new Map();
     if (c.maq) D('stock_mov').filter(x => x.maquina === c.maq).forEach(x => freq.set(x.artigo, (freq.get(x.artigo) || 0) + 1));
     L.sort((a, b) => ((c.items[b.id] ? 1 : 0) - (c.items[a.id] ? 1 : 0)) || ((freq.get(b.id) || 0) - (freq.get(a.id) || 0)) || ((b.foto ? 1 : 0) - (a.foto ? 1 : 0)) || String(a.nome).localeCompare(String(b.nome)));
@@ -333,7 +336,7 @@ window.MAQ_INIT = function () {
     const cst = Object.entries(c.items).reduce((s, [id, q]) => s + ((MAQ_MODOS.includes(c.modo) ? custoUn : custoArt)(art(id)) || 0) * (+q || 0), 0);
     return `<label class="srch" style="margin-bottom:10px">${ic('search', 18)}<input id="mq-q" data-mqq="1" type="search" placeholder="Procurar produto" value="${esc(c.q)}" autocomplete="off"></label>
     <div class="mq-grid">${L.map(a => { const q = +c.items[a.id] || 0; return `<div class="mq-it ${q ? 'on' : ''}">
-      <div data-act="mqAdd" data-id="${a.id}" data-c="1"><div class="ph-img">${a.foto ? `<img src="${esc(fotoUrl(a.foto))}" alt="" loading="lazy">` : esc(initials(a.nome))}</div><div class="nm">${esc(a.nome)}</div></div>
+      <div data-act="mqAdd" data-id="${a.id}" data-c="1"><div class="ph-img">${a.foto ? `<img src="${esc(fotoUrl(a.foto))}" alt="" loading="lazy">` : esc(initials(nmA(a)))}</div><div class="nm">${esc(nmA(a))}</div></div>
       ${q ? `<span class="mq-q ${q < 0 ? 'neg' : ''}" data-act="mqSet" data-id="${a.id}">${qTxt(q)}${passoArt(a) < 1 && !meiaManga(a) ? ' kg' : ''}</span><div class="mq-pm"><button data-act="mqAdd" data-id="${a.id}" data-c="-1" aria-label="Menos">−</button><button data-act="mqAdd" data-id="${a.id}" data-c="1" aria-label="Mais">+</button></div>` : ''}</div>` }).join('') || '<p class="note">Nenhum produto. Procure pelo nome ou marque os artigos "Aparece no abastecimento" no catálogo.</p>'}</div>
     ${c.maq && !semCont(c.maq) && (c.modo === 'abastecimento' || c.modo === 'retirada') ? `<div class="fld" style="margin-top:12px;max-width:260px"><label for="mq-cont">Contador de serviços (opcional)</label><input id="mq-cont" type="number" inputmode="numeric" min="0" class="inp" value="${esc(c.cont || '')}" data-mqc="1" placeholder="${contadorAtual(c.maq) ? 'último: ' + nF(contadorAtual(c.maq).c) : 'Ex.: 14000'}"></div>` : ''}
     <div class="mq-bar"><span class="note"><b>${n}</b> produto${n === 1 ? '' : 's'} · <b>${qTxt(un)}</b> un.${S.verValores && cst ? ` · custo ${eur(cst)}` : ''}</span><span class="grow"></span><button class="btn" data-act="close">Cancelar</button><button class="btn pri" data-act="mqOk" ${n ? '' : 'disabled'}>${MODOS[c.modo][1]}</button></div>`;
@@ -369,10 +372,10 @@ window.MAQ_INIT = function () {
       const hora = quando ? quando.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' }) : '';
       const lt = D('maq_leituras').find(l => l.maquina === x0.maquina && x0.criado && l.criado && Math.abs(new Date(l.criado) - quando) < 5 * 60000);
       const tot = L.reduce((s, x) => s + (x.custo != null ? +x.custo * +x.qt : 0), 0);
-      L.sort((a, b) => String(art(a.artigo)?.nome || '').localeCompare(String(art(b.artigo)?.nome || ''), 'pt'));
+      L.sort((a, b) => nmA(art(a.artigo)).localeCompare(nmA(art(b.artigo)), 'pt'));
       openSheet(`<div class="sh"><h2>${ret ? 'Produtos retirados' : 'Abastecimento'}${m ? ' · máquina ' + esc(m.numero) : ''}</h2><button class="ib" data-act="close" aria-label="Fechar">${ic('x')}</button></div><div class="sb">
         <p class="note" style="margin:0 0 10px">${esc(fD(x0.data || String(x0.criado || '').slice(0, 10)))}${hora ? ' às ' + esc(hora) : ''} · ${esc(nameOf(x0.criadoPor))}${m && m.entidade ? ' · ' + esc(entName(m.entidade)) : ''}${lt ? ` · contador ${esc(nF(lt.contador))}` : ''}</p>
-        <table class="tt"><thead><tr><th>Produto</th><th class="num">Qt.</th>${S.verValores ? '<th class="num">Custo</th>' : ''}</tr></thead><tbody>${L.map(x => `<tr><td>${esc(art(x.artigo)?.nome || 'Artigo')}${art(x.artigo)?.ref ? `<div class="note">${esc(art(x.artigo).ref)}</div>` : ''}</td><td class="num">${qTxt(+x.qt)}</td>${S.verValores ? `<td class="num">${x.custo != null ? eur(x.custo * x.qt) : '—'}</td>` : ''}</tr>`).join('')}</tbody>
+        <table class="tt"><thead><tr><th>Produto</th><th class="num">Qt.</th>${S.verValores ? '<th class="num">Custo</th>' : ''}</tr></thead><tbody>${L.map(x => `<tr><td>${esc(nmA(art(x.artigo)) || 'Artigo')}${art(x.artigo)?.ref ? `<div class="note">${esc(art(x.artigo).ref)}</div>` : ''}</td><td class="num">${qTxt(+x.qt)}</td>${S.verValores ? `<td class="num">${x.custo != null ? eur(x.custo * x.qt) : '—'}</td>` : ''}</tr>`).join('')}</tbody>
         ${S.verValores && tot ? `<tfoot><tr><td><b>Total</b></td><td></td><td class="num"><b>${eur(tot)}</b></td></tr></tfoot>` : ''}</table></div>`);
     },
     mqAdd: d => { const c = S.maqCart; if (!c) return; let v = Math.round(((+c.items[d.id] || 0) + (+d.c) * passoArt(art(d.id))) * 100) / 100; if (v < 0 && c.modo !== 'acerto') v = 0; if (v) c.items[d.id] = v; else delete c.items[d.id]; cartRedraw(); },
