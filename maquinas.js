@@ -84,7 +84,7 @@ window.MAQ_INIT = function () {
   const custoUn = a => { const c = custoArt(a); return c == null ? null : c / unCx(a); };
   const MAQ_MODOS = ['abastecimento', 'retirada'];
   const movsM = id => D('stock_mov').filter(x => x.maquina === id);
-  const desde = per => { const t = TODAY(); return per === 'mes' ? t.slice(0, 8) + '01' : per === '3m' ? addMonths(t, -3) : per === 'ano' ? t.slice(0, 4) + '-01-01' : '0000'; };
+  const desde = per => { const t = TODAY(); return per === 'dia' ? t : per === 'mes' ? t.slice(0, 8) + '01' : per === '3m' ? addMonths(t, -3) : per === 'ano' ? t.slice(0, 4) + '-01-01' : '0000'; };
   const PER = [['mes', 'Este mês'], ['3m', '3 meses'], ['ano', 'Este ano'], ['tudo', 'Sempre']];
   function rent(id, per) {
     const d0 = desde(per);
@@ -214,9 +214,20 @@ window.MAQ_INIT = function () {
       ${S.verValores ? `<button class="btn" data-act="go" data-v="maqqr">${ic('qr', 18)}<span>Etiquetas QR</span></button>` : ''}</div>
       <div class="chips">${chips.map(x => `<button class="chipb ${x === c ? 'on' : ''}" data-act="chip" data-v="maquinas" data-c="${esc(x)}">${esc(x)}</button>`).join('')}</div>
       ${S.verValores ? `<div class="chips">${PER.map(([k, t]) => `<button class="chipb ${k === per ? 'on' : ''}" data-act="maqPer" data-c="${k}">${t}</button>`).join('')}</div>` : ''}</div>`;
+    /* resumo de todas as máquinas: hoje, mês e ano (só para quem vê valores) */
+    const resumo = S.verValores ? (() => {
+      const todas = D('maquinas');
+      const bloco = (k, t) => {
+        const z = todas.reduce((a, m) => { const r = rent(m.id, k); a.fat += r.fat; a.troco += r.troco; a.cus += r.prod + r.pecas; return a; }, { fat: 0, troco: 0, cus: 0 });
+        const liq = (z.fat - z.troco) / 1.23, mg = liq > 0 ? Math.round((liq - z.cus) / liq * 100) : null;
+        return `<div><span>${t}</span><b>${eur(z.fat)}</b><small class="note" style="display:block;margin-top:2px">${z.troco ? `troco −${eur(z.troco)} · ` : ''}sem IVA ${eur(liq)}${mg != null ? ` · margem ${mg}%` : ''}</small></div>`;
+      };
+      return `<div class="panel" style="margin:0 0 12px"><div class="ph"><h2>Faturado nas máquinas</h2></div><div class="pb"><div class="mini">${bloco('dia', 'Hoje')}${bloco('mes', 'Este mês')}${bloco('ano', 'Este ano')}</div>
+        <p class="note" style="margin:8px 0 0">Total do cofre de todas as máquinas, com IVA. A margem é sem IVA (23%), descontado o troco e o custo dos produtos e peças. Para ver máquina a máquina, abra a máquina → Rentabilidade.</p></div></div>`;
+    })() : '';
     const sum = `<p class="note" style="margin:0 0 10px"><b>${L.length}</b> máquina${L.length === 1 ? '' : 's'}${tot ? ` · faturado <b>${eur(tot.fat)}</b> · resultado <b>${eur(tot.res)}</b>` : ''}. Leia o QR colado na máquina para abrir a ficha diretamente.</p>`;
     const row = m => rowH({ act: 'maqOpen', id: m.id, av: m.numero, avk: 1, title: `Máquina ${m.numero}${m.modelo ? ' · ' + m.modelo : ''}`, sub: `${tipoT(m)} · ${local(m)}${m.sitio ? ' (' + m.sitio + ')' : ''}${m.freq ? ' · ' + FREQ[m.freq].toLowerCase() : ''}`, right: R ? eur(R.get(m.id).res) : undefined, badges: estB(m) + visitaB(m) + pecaB(m.id) });
-    return `<div class="pg">${roBanner()}${top}${sum}${listBlock('maquinas', L, row, '<b>Sem máquinas</b>Registe as máquinas com o número que têm (ou vão ter) na etiqueta QR.')}</div>`;
+    return `<div class="pg">${roBanner()}${resumo}${top}${sum}${listBlock('maquinas', L, row, '<b>Sem máquinas</b>Registe as máquinas com o número que têm (ou vão ter) na etiqueta QR.')}</div>`;
   });
 
   /* ---------- ficha da máquina ---------- */
