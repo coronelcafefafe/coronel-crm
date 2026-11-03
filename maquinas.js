@@ -43,6 +43,8 @@ window.MAQ_INIT = function () {
     { k: 'maqTipo', l: 'Em que máquina entra', t: 'sel', o: { cafe: 'Máquina de café (bebidas quentes)', snack: 'Máquina de snacks (comida e bebidas frias)' } },
     { k: 'peca', l: 'É peça (aparece nas assistências)', t: 'bool' },
     { k: 'vidaServicos', l: 'Duração típica da peça (n.º de serviços, opcional)', t: 'num' },
+    { k: 'modelos', l: 'Modelos de máquina onde serve a peça (separados por vírgula, ex.: Brio 250, Brio 3)', t: 'text', full: 1 },
+    { k: 'grupoPeca', l: 'Grupo da peça (ex.: Grupo café, Caldeira, Moinho)', t: 'text' },
   );
   const st = document.createElement('style');
   st.textContent = `
@@ -344,14 +346,18 @@ window.MAQ_INIT = function () {
   const meiaManga = a => !!a && (a.ref === '0804' || /copo.*160\s*cc.*100\s*un/i.test(a.nome || ''));
   const passoArt = a => { const n = (a && a.nome) || ''; if (meiaManga(a)) return 0.5; if (/(caps|c[aá]psula|pastilha|monodose|\bcx\b|cx\/|\d\s*x\s*\d|copo|motor|empacotad)/i.test(n)) return 1; return /(^|[^.,\d])1\s*kg\b/i.test(n) || (/(caf[eé]|chocolate|leite|a[çc][uú]car)/i.test(n) && /(vending|em p[oó](\s|$))/i.test(n)) ? 0.5 : 1; };
   const qTxt = q => String(Math.round(q * 100) / 100).replace('.', ',');
+  /* uma peça serve na máquina se um dos modelos da peça for o modelo da máquina (ou o início dele: Kikko serve no Kikko Max) */
+  const servePeca = (a, m) => { const mm = norm((m && m.modelo) || ''); if (!mm) return true; return String(a.modelos || '').split(',').map(x => norm(x.trim())).filter(Boolean).some(x => mm === x || mm.startsWith(x + ' ')); };
   function cartItems() {
     const c = S.maqCart, mode = MODOS[c.modo][2];
     /* cada máquina mostra só os artigos do seu tipo: café, snacks ou os dois (combinada) */
     const mt = c.maq ? M(c.maq)?.tipo : null, quer = mt === 'vending_comida' ? ['snack'] : (mt === 'vending_cafe' || mt === 'cafe') ? ['cafe'] : null;
     const doTipo = a => !quer || !a.maqTipo || quer.includes(a.maqTipo);
     let L = D('artigos').filter(a => a.ativo !== false && (mode === 'maquinas' ? a.maquinas && doTipo(a) : mode === 'peca' ? a.peca : (a.maquinas || a.peca)));
+    /* peças: só as do modelo da máquina (as peças sem modelo indicado servem para todas) */
+    if (mode === 'peca' && c.maq) { const mm = M(c.maq), so = L.filter(a => !a.modelos || servePeca(a, mm)); if (so.length) L = so; }
     const q = norm(c.q);
-    if (q) L = D('artigos').filter(a => a.ativo !== false && norm([a.nome, a.nomeMaq, a.ref].join(' ')).includes(q));
+    if (q) L = D('artigos').filter(a => a.ativo !== false && (mode !== 'peca' || a.peca) && q.split(/\s+/).every(w => norm([a.nome, a.nomeMaq, a.ref, mode === 'peca' ? a.grupoPeca : ''].join(' ')).includes(w)));
     const freq = new Map();
     if (c.maq) D('stock_mov').filter(x => x.maquina === c.maq).forEach(x => freq.set(x.artigo, (freq.get(x.artigo) || 0) + 1));
     L.sort((a, b) => ((c.items[b.id] ? 1 : 0) - (c.items[a.id] ? 1 : 0)) || ((freq.get(b.id) || 0) - (freq.get(a.id) || 0)) || ((b.foto ? 1 : 0) - (a.foto ? 1 : 0)) || String(a.nome).localeCompare(String(b.nome)));
@@ -363,7 +369,7 @@ window.MAQ_INIT = function () {
     const cst = Object.entries(c.items).reduce((s, [id, q]) => s + ((MAQ_MODOS.includes(c.modo) ? custoUn : custoArt)(art(id)) || 0) * (+q || 0), 0);
     return `<label class="srch" style="margin-bottom:10px">${ic('search', 18)}<input id="mq-q" data-mqq="1" type="search" placeholder="Procurar produto" value="${esc(c.q)}" autocomplete="off"></label>
     <div class="mq-grid">${L.map(a => { const q = +c.items[a.id] || 0; return `<div class="mq-it ${q ? 'on' : ''}">
-      <div data-act="mqAdd" data-id="${a.id}" data-c="1"><div class="ph-img">${a.foto ? `<img src="${esc(fotoUrl(a.foto))}" alt="" loading="lazy">` : esc(initials(nmA(a)))}</div><div class="nm">${esc(nmA(a))}</div></div>
+      <div data-act="mqAdd" data-id="${a.id}" data-c="1"><div class="ph-img">${a.foto ? `<img src="${esc(fotoUrl(a.foto))}" alt="" loading="lazy">` : esc(initials(nmA(a)))}</div><div class="nm">${esc(nmA(a))}${c.modo === 'peca' && a.ref ? `<small style="display:block;color:var(--ink-3)">${esc(a.ref)}${a.grupoPeca ? ' · ' + esc(a.grupoPeca) : ''}</small>` : ''}</div></div>
       ${q ? `<span class="mq-q ${q < 0 ? 'neg' : ''}" data-act="mqSet" data-id="${a.id}">${qTxt(q)}${passoArt(a) < 1 && !meiaManga(a) ? ' kg' : ''}</span><div class="mq-pm"><button data-act="mqAdd" data-id="${a.id}" data-c="-1" aria-label="Menos">−</button><button data-act="mqAdd" data-id="${a.id}" data-c="1" aria-label="Mais">+</button></div>` : ''}</div>` }).join('') || '<p class="note">Nenhum produto. Procure pelo nome ou marque os artigos "Aparece no abastecimento" no catálogo.</p>'}</div>
     ${c.maq && !semCont(c.maq) && (c.modo === 'abastecimento' || c.modo === 'retirada') ? `<div class="fld" style="margin-top:12px;max-width:260px"><label for="mq-cont">Contador de serviços (opcional)</label><input id="mq-cont" type="number" inputmode="numeric" min="0" class="inp" value="${esc(c.cont || '')}" data-mqc="1" placeholder="${contadorAtual(c.maq) ? 'último: ' + nF(contadorAtual(c.maq).c) : 'Ex.: 14000'}"></div>` : ''}
     <div class="mq-bar"><span class="note"><b>${n}</b> produto${n === 1 ? '' : 's'} · <b>${qTxt(un)}</b> un.${S.verValores && cst ? ` · custo ${eur(cst)}` : ''}</span><span class="grow"></span><button class="btn" data-act="close">Cancelar</button><button class="btn pri" data-act="mqOk" ${n ? '' : 'disabled'}>${MODOS[c.modo][1]}</button></div>`;
