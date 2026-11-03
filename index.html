@@ -458,6 +458,7 @@ const F={
   {k:'estado',l:'Estado',t:'sel',o:EST_PROP,req:1,def:'Rascunho'},
   {k:'validade',l:'Válida até',t:'date',def:'@d30'},
   {k:'envio',l:'Enviada por',t:'sel',o:['Email','WhatsApp','Presencial']},
+  {k:'pdf',l:'Proposta em PDF (a que foi enviada ao cliente)',t:'pdf',full:1},
   {k:'linhas',l:'Artigos e serviços',t:'linhas',full:1},
   {k:'obs',l:'Condições e observações',t:'area',full:1},
  ],
@@ -801,7 +802,7 @@ VIEWS.ficha=()=>loadingOr(()=>{
 /* --- rows por coleção --- */
 const visRow=v=>rowH({col:'visitas',id:v.id,av:initials(entName(v.entidade)),avk:1,title:entName(v.entidade),sub:[fD(v.data),v.tipo,v.repetir?'Repete: '+REPV[v.repetir].toLowerCase():'',v.acao].filter(Boolean).join(' · '),badges:badge(v.resumo||'Visita',toneRes[v.resumo]||'mute')});
 const encRow=x=>rowH({col:'encomendas',id:x.id,title:entName(x.entidade),sub:[fD(x.data),(x.linhas||[]).length+' artigo'+((x.linhas||[]).length===1?'':'s'),x.entregarPor?'Entrega: '+nameOf(x.entregarPor):''].filter(Boolean).join(' · '),right:eur(docTotal(x)),badges:badge(x.estado||'Nova',toneEnc[x.estado]||'mute')});
-const propRow=x=>rowH({col:'propostas',id:x.id,title:entName(x.entidade),sub:[fD(x.data),x.validade?'válida até '+fD(x.validade):''].filter(Boolean).join(' · '),right:eur(docTotal(x)),badges:badge(x.estado||'Rascunho',toneProp[x.estado]||'mute')});
+const propRow=x=>rowH({col:'propostas',id:x.id,title:entName(x.entidade),sub:[fD(x.data),x.validade?'válida até '+fD(x.validade):''].filter(Boolean).join(' · '),right:eur(docTotal(x)),badges:(x.pdf?`<button class="btn sm" data-act="pdfVer" data-p="${esc(x.pdf)}" title="Abrir a proposta em PDF">${ic('doc',14)}PDF</button> `:'')+badge(x.estado||'Rascunho',toneProp[x.estado]||'mute')});
 const pedRow=x=>rowH({col:'pedidos',id:x.id,title:(x.tipo||'Pedido')+' · '+entName(x.entidade),sub:[x.agendado?'Agendado '+fD(x.agendado):fD(x.data),x.descricao].filter(Boolean).join(' — '),badges:badge(x.estado||'Aberto',tonePed[x.estado]||'mute')+(S.canWrite&&x.estado!=='Concluído'?`<button class="qa" data-act="pedNext" data-id="${x.id}">${EST_PED[EST_PED.indexOf(x.estado||'Aberto')+1]||'Concluído'}</button>`:'')});
 const avRow=x=>{const[s,t]=avencaStatus(x);return rowH({col:'avencas',id:x.id,title:entName(x.entidade),sub:[x.descricao,PERIOD[x.periodicidade],x.xdId&&x.ultimaCobranca?'faturada a '+fD(x.ultimaCobranca):''].filter(Boolean).join(' · '),right:eur(x.valor),badges:badge(s,t)+(x.xdEstado==='por_criar'?badge('Por criar no XD','warn'):'')+(x.xdId?badge('XD','mute'):'')+(S.canWrite&&x.ativa!==false&&!x.xdId?`<button class="qa" data-act="cobrar" data-id="${x.id}">Cobrar</button>`:'')})};
 const pagRow=x=>rowH({col:'pagamentos',id:x.id,title:entName(x.entidade),sub:[fD(x.data),x.metodo,x.referente].filter(Boolean).join(' · '),right:eur(x.valor),badges:badge(EST_PAG[x.estado]||'—',tonePag[x.estado]||'mute')+(S.canWrite&&x.estado==='receber'?`<button class="qa" data-act="pagSt" data-id="${x.id}" data-c="recibo">Recebido</button>`:'')+(S.canWrite&&x.estado==='recibo'?`<button class="qa" data-act="pagSt" data-id="${x.id}" data-c="fechado">Recibo emitido</button>`:'')});
@@ -860,6 +861,7 @@ function fieldH(f,v){
   case'user':{const ids=teamIds();i=`<select id="${id}"><option value="">—</option>${ids.map(u=>`<option value="${esc(u)}" ${v===u?'selected':''}>${esc(nameOf(u))}${u===S.uid?' (eu)':''}</option>`).join('')}</select>`;break}
   case'ent':i=`<div class="pick"><input id="${id}-q" class="inp" data-pick="${f.k}" value="${esc(v?entName(v):'')}" placeholder="Procurar cliente pelo nome" autocomplete="off"><input type="hidden" id="${id}" value="${esc(v||'')}"><div class="pkl" id="pk-${f.k}" hidden></div></div>`;break;
   case'linhas':i=`<div id="linhas">${linhasH()}</div>${['encomendas','propostas'].includes(S.form?.col)?`<div id="enc-hist">${histH()}</div>`:''}`;break;
+  case'pdf':i=`<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><input type="hidden" id="${id}" value="${esc(v||'')}"><span id="pdfnome" class="note" style="margin:0">${v?esc(pdfNome(v)):'Sem PDF'}</span><button class="btn sm" data-act="pdfVer" data-p="${esc(v||'')}" id="pdfver" ${v?'':'hidden'}>${ic('doc',16)}Abrir</button>${S.canWrite?`<label class="btn sm">${v?'Trocar PDF':'Carregar PDF'}<input type="file" accept="application/pdf" data-pdf="1" hidden></label>`:''}</div>`;break;
   case'foto':i=`<div style="display:flex;gap:12px;align-items:center"><div class="ph-img" style="width:96px;border-radius:10px;overflow:hidden" id="fotoprev">${v?`<img src="${esc(fotoUrl(v))}" alt="">`:'—'}</div><input type="hidden" id="${id}" value="${esc(v||'')}">${S.assets?`<label class="btn sm">Escolher fotografia<input type="file" accept="image/png,image/jpeg,image/webp" data-foto="1" hidden></label>`:'<span class="note">Só quem pode editar o CRM consegue carregar fotografias.</span>'}</div>`;break;
  }
  return `<div class="fld${f.full?' full':''}" data-k="${f.k}">${lab}${i}</div>`}
@@ -1044,6 +1046,7 @@ const ACT={
  copydoc:(d,b)=>{const col=S.form.col,x=S.data[col].get(S.form.id);const t=totais(x.linhas);const txt=`${col==='propostas'?'Proposta':'Encomenda'} · ${entName(x.entidade)} · ${fDY(x.data)}\n\n${(x.linhas||[]).map(l=>`${l.qt} × ${l.nome} — ${eur(l.preco)}${+l.desc?` (−${l.desc}%)`:''} = ${eur(lineBase(l))}`).join('\n')}\n\nTotal sem IVA: ${eur(t.base)}\nIVA: ${eur(t.iva)}\nTotal: ${eur(t.total)}${x.validade?`\nVálida até ${fDY(x.validade)}`:''}${x.obs?`\n\n${x.obs}`:''}`;copyText(txt,b)},
  aicopy:(d,b)=>copyText($('#aiout')?.textContent||'',b),
  art:d=>openArt(d.id),
+ pdfVer:d=>abrirPdf(d.p),
  artEdit:d=>{closeSheet();openForm('artigos',d.id)},
  aiPitch:d=>{const a=S.data.artigos.get(d.id);if(!a)return;aiRun(`Escreve um pitch de venda para o artigo abaixo, para um comercial da Coronel Café usar com clientes empresariais e de restauração.\nEstilo: ${$('#aist').value}. Formato: ${$('#aifmt').value}.\n${MARCA}\nUsa só a informação dada; não inventes características técnicas nem preços.\n\nArtigo: ${a.nome}\nReferência: ${a.ref||'—'}\nFamília: ${a.familia||'—'}\nPreço sem IVA: ${a.preco!=null?eur(a.preco)+' / '+(a.unidade||'un'):'—'}\nDescrição: ${a.descricao||'—'}\n\nResponde só com o texto do pitch, sem títulos.`)},
  aiPrep:d=>{const e=ent(d.id);aiRun(`Prepara um comercial da Coronel Café para a próxima visita a este cliente. Em texto simples, sem markdown, máximo 170 palavras, em 4 blocos curtos com estes títulos: Situação, A abordar, Oportunidades (café, água, vending, acessórios), Atenção (pagamentos, pedidos, reclamações). Baseia-te só no histórico abaixo; se faltar informação, diz o que perguntar. Hoje é ${TODAY()}.\n\n${histText(e)}`)},
@@ -1096,6 +1099,14 @@ document.addEventListener('input',e=>{
 document.addEventListener('change',async e=>{
  const t=e.target;if(t.dataset.acesso){const v=t.value;const{error}=await S.db.from('membros').update({papel:v==='total'?'membro':v,acesso_total:v==='total'}).eq('email',t.dataset.acesso);if(error){toast('Não foi possível alterar o acesso.');loadTeam();return}toast('Acesso alterado. A pessoa vê a mudança quando voltar a abrir o CRM.');loadTeam();return}
  if(t.dataset.li!==undefined&&t.tagName==='SELECT'&&S.form){const L=S.form.linhas;L[+t.dataset.li].iva=t.value;$('#ln-tot').innerHTML=totH(totais(L));return}
+ if(t.dataset.pdf&&t.files?.[0]){const f=t.files[0];const nm=$('#pdfnome');
+  if(f.type&&f.type!=='application/pdf')return toast('Escolha um ficheiro PDF');if(f.size>20*1024*1024)return toast('PDF demasiado grande (máx. 20 MB)');
+  nm.textContent='A carregar…';const base=(f.name||'proposta.pdf').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Za-z0-9._-]+/g,'-').replace(/^-+|-+$/g,'').slice(-80)||'proposta.pdf';
+  const path=`propostas/${Date.now()}-${base.toLowerCase().endsWith('.pdf')?base:base+'.pdf'}`;
+  const{error}=await S.db.storage.from('documentos').upload(path,f,{contentType:'application/pdf',upsert:false});
+  if(error){nm.textContent='Não carregou';return toast('Não foi possível carregar o PDF')}
+  $('#f-pdf').value=path;nm.textContent=pdfNome(path);const vb=$('#pdfver');if(vb){vb.dataset.p=path;vb.hidden=false}
+  const es=$('#f-estado');if(es&&es.value==='Rascunho')es.value='Enviada';toast('PDF carregado. Grave a proposta para ficar registado.');return}
  if(t.dataset.foto&&t.files?.[0]){const f=t.files[0];const prev=$('#fotoprev');prev.textContent='A carregar…';
   try{const r=await S.assets.upload(f);$('#f-foto').value=r.id;prev.innerHTML=`<img src="${esc(r.url)}" alt="">`}catch(err){prev.textContent='—';toast(err?.code==='too_large'?'Imagem demasiado grande (máx. 20 MB)':err?.code==='unsupported_type'?'Use uma imagem JPG, PNG ou WebP':'Não foi possível carregar a imagem')}}});
 window.addEventListener('resize',()=>renderShell());
@@ -1133,6 +1144,8 @@ Object.assign(ACT,{
 });
 async function loadTable(col){let all=[],from=0;for(;;){const{data,error}=await S.db.from(col).select('*').range(from,from+999);if(error)throw error;all=all.concat(data);if(data.length<1000)break;from+=1000}const m=new Map();all.forEach(r=>{const o=fromRow(r);m.set(o.id,o)});S.data[col]=m;S.ready[col]=true;schedule()}
 async function loadTeam(){const{data}=await S.db.from('membros').select('*').order('nome');const m=new Map();(data||[]).forEach(r=>{const id=r.user_id||('email:'+r.email);m.set(id,{id,nome:r.nome,email:r.email,papel:r.papel,total:!!r.acesso_total,desde:r.desde,ligado:!!r.user_id})});S.data.equipa=m;schedule()}
+const pdfNome=p=>String(p||'').split('/').pop().replace(/^\d+-/,'');
+async function abrirPdf(p){if(!p)return;const w=window.open('','_blank');const{data,error}=await S.db.storage.from('documentos').createSignedUrl(p,600);if(error||!data?.signedUrl){if(w)w.close();return toast('Não foi possível abrir o PDF')}if(w)w.location.href=data.signedUrl;else location.href=data.signedUrl}
 async function uploadFoto(file){const ext=((file.name||'').split('.').pop()||'jpg').toLowerCase().replace(/[^a-z0-9]/g,'')||'jpg';const path=`${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;const{error}=await S.db.storage.from('artigos').upload(path,file,{contentType:file.type||'image/jpeg',upsert:false});if(error)throw{code:/size|large/i.test(error.message)?'too_large':'upstream_error'};return{id:path,url:fotoUrl(path)}}
 
 /* --- Claude através da função "claude" do Supabase --- */
