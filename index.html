@@ -871,7 +871,7 @@ function openForm(col,id,preset){
  S.form={col,id,linhas:clone(vals.linhas||[]),sug:null,extra:preset&&preset._extra,ent0:vals.entidade||''};
  const ro=!S.canWrite;
  let body=`<form id="frm" novalidate><div class="fg">`;
- F[col].forEach(f=>{if(col==='visitas'&&f.k==='relatorio'&&S.sample)body+=`<div class="fld full">${aiVisitaH()}</div>`;body+=fieldH(f,vals[f.k])});
+ F[col].forEach(f=>{if(f.so&&!S.verValores)return;if(col==='visitas'&&f.k==='relatorio'&&S.sample)body+=`<div class="fld full">${aiVisitaH()}</div>`;body+=fieldH(f,vals[f.k])});
  body+=`</div></form>`;
  if(ex&&col==='encomendas'&&CFG.emailEncomendas)body+=`<p class="note" style="margin-top:12px">${ex.emailEnviado?'Enviada por email em '+esc(new Date(ex.emailEnviado).toLocaleString('pt-PT',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})):'Ainda não enviada por email.'}</p>`;
  if(ex&&(col==='encomendas'||col==='propostas'))body+=`<div style="margin-top:16px">${aiBox(col,ex)}</div>`;

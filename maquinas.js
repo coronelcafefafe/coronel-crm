@@ -8,7 +8,7 @@ window.MAQ_INIT = function () {
   const DIA_C = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
   const TIPO_M = { vending_cafe: 'Vending café', vending_comida: 'Vending comida', combinado: 'Vending combinado', cafe: 'Máquina de café' };
   const tipoT = m => TIPO_M[m?.tipo] || (m?.tipo === 'vending' ? 'Vending' : 'Máquina');
-  const NOVAS = ['maquinas', 'maq_local', 'maq_assist', 'stock_mov', 'maq_fat', 'maq_leituras', 'maq_cofre'];
+  const NOVAS = ['maquinas', 'maq_local', 'maq_assist', 'stock_mov', 'maq_fat', 'maq_leituras', 'maq_cofre', 'maq_troco'];
   NOVAS.forEach(c => { if (!COLS.includes(c)) COLS.push(c); S.data[c] = new Map(); });
 
   /* ---------- ícones, navegação, estilos ---------- */
@@ -35,7 +35,7 @@ window.MAQ_INIT = function () {
     { k: 'notas', l: 'Notas', t: 'area', full: 1 },
   ];
   F.artigos.push(
-    { k: 'custo', l: 'Preço de custo s/ IVA (€) · vem do XD', t: 'num' },
+    { k: 'custo', l: 'Preço de custo s/ IVA (€) · vem do XD', t: 'num', so: 1 },
     { k: 'nomeMaq', l: 'Nome no ecrã de abastecimento (opcional, ex.: Açúcar 4 g · pacote de 50)', t: 'text', full: 1 },
     { k: 'unCaixa', l: 'Unidades da máquina por unidade do XD (ex.: caixa de 30 → 30; XD à paletina e máquina em packs de 100 → 0,01)', t: 'num', ph: '1' },
     { k: 'precoMaquina', l: 'Preço de venda na máquina (€, por unidade)', t: 'num' },
@@ -100,7 +100,10 @@ window.MAQ_INIT = function () {
     });
     const fat = D('maq_fat').filter(f => f.maquina === id && (f.data || '') >= d0).reduce((s, f) => s + (+f.valor || 0), 0);
     const minutos = D('maq_assist').filter(a => a.maquina === id && (a.data || '') >= d0).reduce((s, a) => s + (+a.minutos || 0), 0);
-    return { fat, prod, pecas, res: fat - prod - pecas, semCusto, vendaEsp, minutos };
+    /* troco: moedas que saíram da empresa para o moedeiro; volta no cofre, por isso desconta-se à faturação */
+    const troco = D('maq_troco').filter(t => t.maquina === id && (t.data || '') >= d0).reduce((s, t) => s + (t.tipo === 'retirar' ? -1 : 1) * (+t.valor || 0), 0);
+    const vendas = fat - troco;
+    return { fat, troco, vendas, prod, pecas, res: vendas - prod - pecas, semCusto, vendaEsp, minutos };
   }
 
   /* ---------- rotas: próxima visita ---------- */
@@ -241,7 +244,7 @@ window.MAQ_INIT = function () {
     if (S.canWrite) h += `<div class="mq-acts" style="margin-top:14px">
       <button class="btn pri" data-act="maqCart" data-c="abastecimento" data-id="${m.id}">${ic('box', 18)}Abastecer</button>
       <button class="btn ${aberta ? 'gold' : ''}" data-act="maqAssist" data-id="${m.id}">${ic('tool', 18)}${aberta ? 'Assistência aberta' : 'Assistência'}</button>
-      ${temCofre(m) ? `<button class="btn" data-act="maqCofre" data-id="${m.id}">${ic('euro', 18)}Levantar cofre</button>` : ''}
+      ${temCofre(m) ? `<button class="btn" data-act="maqCofre" data-id="${m.id}">${ic('euro', 18)}Levantar cofre</button><button class="btn" data-act="maqTroco" data-id="${m.id}">${ic('plus', 18)}Meter troco</button>` : ''}
       <button class="btn" data-act="maqMover" data-id="${m.id}">${ic('pin', 18)}Mover</button>
       <button class="btn" data-act="maqParada" data-id="${m.id}">${ic('cal', 18)}Máquina parada</button>
       ${S.verValores ? `<button class="btn" data-act="maqFat" data-id="${m.id}">${ic('euro', 18)}Faturação</button>` : `<button class="btn" data-act="maqCart" data-c="retirada" data-id="${m.id}">Retirar produtos</button>`}</div>`;
@@ -249,8 +252,8 @@ window.MAQ_INIT = function () {
     if (S.verValores) {
       const r = rent(m.id, per);
       h += `<div class="panel" style="margin-top:14px"><div class="ph"><h2>Rentabilidade</h2></div><div class="pb"><div class="chips" style="margin:0 0 12px">${PER.map(([k, t]) => `<button class="chipb ${k === per ? 'on' : ''}" data-act="maqPer" data-c="${k}">${t}</button>`).join('')}</div>
-      <div class="mini"><div><span>Faturado</span><b>${eur(r.fat)}</b></div><div><span>Produtos (custo)</span><b>${eur(r.prod)}</b></div><div><span>Peças (custo)</span><b>${eur(r.pecas)}</b></div><div><span>Resultado</span><b style="color:${r.res < 0 ? 'var(--bad)' : 'inherit'}">${eur(r.res)}</b></div></div>
-      <p class="note" style="margin:10px 0 0">${r.fat ? `Margem ${Math.round(r.res / r.fat * 100)}%. ` : ''}${r.vendaEsp ? `Ao preço da máquina, os produtos que entraram valem ${eur(r.vendaEsp)}. ` : ''}${r.minutos ? `Assistências: ${Math.round(r.minutos / 6) / 10} h. ` : ''}${r.semCusto ? `${r.semCusto} movimento${r.semCusto === 1 ? '' : 's'} sem preço de custo no XD.` : ''}</p></div></div>`;
+      <div class="mini"><div><span>Faturado</span><b>${eur(r.fat)}</b></div>${r.troco ? `<div><span>Troco metido</span><b>−${eur(r.troco)}</b></div>` : ''}<div><span>Produtos (custo)</span><b>${eur(r.prod)}</b></div><div><span>Peças (custo)</span><b>${eur(r.pecas)}</b></div><div><span>Resultado</span><b style="color:${r.res < 0 ? 'var(--bad)' : 'inherit'}">${eur(r.res)}</b></div></div>
+      <p class="note" style="margin:10px 0 0">${r.troco ? `Vendas reais ${eur(r.vendas)} (faturado − troco metido). ` : ''}${r.vendas > 0 ? `Margem ${Math.round(r.res / r.vendas * 100)}%. ` : ''}${r.vendaEsp ? `Ao preço da máquina, os produtos que entraram valem ${eur(r.vendaEsp)}. ` : ''}${r.minutos ? `Assistências: ${Math.round(r.minutos / 6) / 10} h. ` : ''}${r.semCusto ? `${r.semCusto} movimento${r.semCusto === 1 ? '' : 's'} sem preço de custo no XD.` : ''}</p></div></div>`;
     }
     h += pecasPanel(m) + timeline(m) + `</div>`;
     return h;
@@ -292,6 +295,7 @@ window.MAQ_INIT = function () {
       const c = D('stock_mov').filter(x => x.assist === a.id).reduce((s, x) => s + (x.custo != null ? +x.custo * +x.qt : 0), 0);
       ev.push({ q: a.fim || a.criado, t: 'Assistência' + (a.minutos ? ` · ${a.minutos} min` : '') + (a.contador != null ? ` · aos ${nF(a.contador)} serviços` : '') + (a.preventiva ? ' · preventiva' : ''), s: [a.avaria, a.solucao].filter(Boolean).join(' → ') || '—', r: S.verValores && c ? eur(c) : '', por: a.criadoPor });
     });
+    D('maq_troco').filter(t => t.maquina === m.id).forEach(t => ev.push({ q: t.criado || t.data, t: t.tipo === 'retirar' ? 'Troco retirado do moedeiro' : 'Troco metido no moedeiro', s: t.notas || 'Moedas da empresa', r: (t.tipo === 'retirar' ? '−' : '') + eur(t.valor), por: t.criadoPor }));
     D('maq_local').filter(l => l.maquina === m.id).forEach(l => ev.push({ q: l.criado, t: 'Mudança de local', s: (l.entidade ? entName(l.entidade) : 'Armazém') + (l.notas ? ' · ' + l.notas : ''), r: '', por: l.criadoPor }));
     if (S.verValores) D('maq_fat').filter(f => f.maquina === m.id).forEach(f => ev.push({ q: f.data + 'T23:59', t: 'Faturação', s: f.notas || (f.entidade ? entName(f.entidade) : ''), r: eur(f.valor), por: f.criadoPor, fat: f.id }));
     ev.sort((a, b) => String(b.q).localeCompare(String(a.q)));
@@ -388,6 +392,27 @@ window.MAQ_INIT = function () {
       const cont = parseInt(c.cont); if (c.maq && isFinite(cont) && cont >= 0) await insertRows('maq_leituras', [{ maquina: c.maq, contador: cont, data: TODAY() }]);
       const n = rows.length; closeSheet(); toast(c.modo === 'abastecimento' ? `Abastecimento registado (${n} produto${n === 1 ? '' : 's'})` : 'Registado');
       S.maqCart = null;
+    },
+    maqTroco: d => {
+      const m = M(d.id); if (!m || !canAct()) return;
+      openSheet(`<div class="sh"><h2>Troco · máquina ${esc(m.numero)}</h2><button class="ib" data-act="close" aria-label="Fechar">${ic('x')}</button></div><div class="sb">
+        <p class="note" style="margin:0 0 12px">Escreva o total em euros das moedas que meteu no moedeiro (só moedas que saíram da empresa; troco tirado do próprio cofre não se regista).</p>
+        <div class="fg"><div class="fld"><label for="tr-v">Total (€)</label><input id="tr-v" class="inp" type="text" inputmode="decimal" placeholder="Ex.: 15,00" autocomplete="off"></div>
+        <div class="fld"><label for="tr-t">O que fez</label><select id="tr-t" class="inp"><option value="meter">Meti troco no moedeiro</option><option value="retirar">Retirei moedas dos tubos</option></select></div>
+        <div class="fld full"><label for="tr-n">Notas (opcional)</label><input id="tr-n" class="inp" type="text" placeholder="Ex.: 10 € em 0,10 e 5 € em 0,05"></div></div>
+        <div style="display:flex;gap:10px;margin-top:14px"><span class="grow"></span><button class="btn" data-act="close">Cancelar</button><button class="btn pri" data-act="maqTrocoOk" data-id="${m.id}">Registar</button></div></div>`);
+      setTimeout(() => document.getElementById('tr-v')?.focus(), 50);
+    },
+    maqTrocoOk: async (d, b) => {
+      const m = M(d.id); if (!m || !canAct()) return;
+      const v = Math.round(parseFloat(String(document.getElementById('tr-v')?.value || '').replace(/\s|€/g, '').replace(',', '.')) * 100) / 100;
+      if (!(v > 0)) return toast('Escreva o valor em euros, por exemplo 15,00.');
+      if (v > 500) return toast('Valor muito alto — confirme o total das moedas.');
+      const tipo = document.getElementById('tr-t')?.value === 'retirar' ? 'retirar' : 'meter';
+      const notas = (document.getElementById('tr-n')?.value || '').trim() || null;
+      b.disabled = true; const ok = await insertRows('maq_troco', [{ maquina: m.id, valor: v, tipo, notas, data: TODAY() }]); b.disabled = false;
+      if (!ok) return;
+      closeSheet(); toast(`${tipo === 'retirar' ? 'Troco retirado' : 'Troco metido'}: ${eur(v)} na máquina ${m.numero}`); render();
     },
     maqCofre: async (d, b) => {
       const m = M(d.id); if (!m || !canAct()) return;
