@@ -315,6 +315,18 @@ window.MAQ_INIT = function () {
   /* cofre: só registo de levantamento (o dinheiro é contado na empresa) */
   const temCofre = m => !!(m && m.entidade && m.tipo !== 'cafe' && m.estado !== 'armazem');
   const ultCofre = id => { let u = null; D('maq_cofre').forEach(x => { if (x.maquina === id && (!u || x.data > u.data)) u = x; }); return u; };
+  async function registaCofre(m) {
+    const r = await insertRows('maq_cofre', [{ maquina: m.id }]);
+    if (!r) return false;
+    let avisado = false;
+    try {
+      const { data: { session } } = await S.db.auth.getSession();
+      const x = await fetch(CFG.url + '/functions/v1/cofre-aviso', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (session?.access_token || ''), apikey: CFG.anonKey }, body: JSON.stringify({ cofre: r[0].id }) });
+      avisado = x.ok;
+    } catch (_) { }
+    toast(avisado ? `Cofre da máquina ${m.numero} registado. O André foi avisado.` : `Cofre da máquina ${m.numero} registado. O aviso por email não seguiu.`);
+    return true;
+  }
   const fDiaHora = t => { const d = new Date(t); return d.toLocaleDateString('pt-PT', { day: 'numeric', month: 'short' }) + ', ' + d.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' }); };
   /* produtos ao quilo (café, chocolate, açúcar, leite) somam de 0,5 em 0,5 */
   /* copos de 160 cc vêm em mangas de 100: na máquina mete-se meia manga (50) de cada vez */
@@ -392,7 +404,13 @@ window.MAQ_INIT = function () {
       const cont = parseInt(c.cont); if (c.maq && isFinite(cont) && cont >= 0) await insertRows('maq_leituras', [{ maquina: c.maq, contador: cont, data: TODAY() }]);
       const n = rows.length; closeSheet(); toast(c.modo === 'abastecimento' ? `Abastecimento registado (${n} produto${n === 1 ? '' : 's'})` : 'Registado');
       S.maqCart = null;
+      /* depois de abastecer uma máquina com cofre, perguntar se levantou o cofre */
+      const mq = c.modo === 'abastecimento' && c.maq ? M(c.maq) : null;
+      if (mq && temCofre(mq)) setTimeout(() => openSheet(`<div class="sh"><h2>Máquina ${esc(mq.numero)}</h2><button class="ib" data-act="close" aria-label="Fechar">${ic('x')}</button></div><div class="sb">
+        <p style="margin:0 0 16px;font-size:18px">Levantou o cofre?</p>
+        <div style="display:flex;gap:10px"><button class="btn pri" style="flex:1;justify-content:center;min-height:52px" data-act="maqCofreSim" data-id="${mq.id}">Sim</button><button class="btn" style="flex:1;justify-content:center;min-height:52px" data-act="close">Não</button></div></div>`), 350);
     },
+    maqCofreSim: async (d, b) => { const m = M(d.id); if (!m || !canAct()) return; b.disabled = true; b.textContent = 'A registar…'; closeSheet(); await registaCofre(m); render(); },
     maqTroco: d => {
       const m = M(d.id); if (!m || !canAct()) return;
       openSheet(`<div class="sh"><h2>Troco · máquina ${esc(m.numero)}</h2><button class="ib" data-act="close" aria-label="Fechar">${ic('x')}</button></div><div class="sb">
@@ -418,15 +436,7 @@ window.MAQ_INIT = function () {
       const m = M(d.id); if (!m || !canAct()) return;
       if (!b.dataset.armed) { b.dataset.armed = 1; b.dataset.t0 = b.innerHTML; b.textContent = 'Confirmar: cofre levantado'; b.classList.add('pri'); setTimeout(() => { if (b.isConnected && b.dataset.armed) { delete b.dataset.armed; b.innerHTML = b.dataset.t0; b.classList.remove('pri'); } }, 6000); return; }
       delete b.dataset.armed; b.disabled = true; b.textContent = 'A registar…';
-      const r = await insertRows('maq_cofre', [{ maquina: m.id }]);
-      if (!r) { b.disabled = false; b.innerHTML = b.dataset.t0; b.classList.remove('pri'); return; }
-      let avisado = false;
-      try {
-        const { data: { session } } = await S.db.auth.getSession();
-        const x = await fetch(CFG.url + '/functions/v1/cofre-aviso', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (session?.access_token || ''), apikey: CFG.anonKey }, body: JSON.stringify({ cofre: r[0].id }) });
-        avisado = x.ok;
-      } catch (_) { }
-      toast(avisado ? `Cofre da máquina ${m.numero} registado. O André foi avisado.` : `Cofre da máquina ${m.numero} registado. O aviso por email não seguiu.`);
+      if (!(await registaCofre(m))) { b.disabled = false; b.innerHTML = b.dataset.t0; b.classList.remove('pri'); return; }
       render();
     },
     maqGeo: d => {
