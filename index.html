@@ -584,11 +584,11 @@ function openSheet(html){$('#sheetc').innerHTML=html;$('#sheet').hidden=false;do
 function closeSheet(){$('#sheet').hidden=true;$('#sheetc').innerHTML='';document.body.classList.remove('lock');S.form=null;S.aiCtl?.abort()}
 
 /* ================= navegação ================= */
-const NAV=[['inicio','Início','home'],['leads','Negócios','lead'],['clientes','Clientes','users'],['agenda','Agenda e tarefas','cal'],['visitas','Visitas','pin'],['sep'],['encomendas','Encomendas','box'],['avencas','Avenças','repeat'],['pedidos','Pedidos e assistência','tool'],['pagamentos','Recebimentos','euro'],['sep'],['catalogo','Catálogo','grid'],['compras','Compras','cart'],['assistente','Assistente Claude','spark'],['sep'],['mais','Equipa e conta','users']];
-const SO_VALORES=['pagamentos','compras'];
+const NAV=[['inicio','Início','home'],['leads','Negócios','lead'],['clientes','Clientes','users'],['agenda','Agenda e tarefas','cal'],['visitas','Visitas','pin'],['sep'],['encomendas','Encomendas','box'],['avencas','Avenças','repeat'],['pedidos','Pedidos e assistência','tool'],['pagamentos','Recebimentos','euro'],['pendentes','Pendentes','euro'],['sep'],['catalogo','Catálogo','grid'],['compras','Compras','cart'],['assistente','Assistente Claude','spark'],['sep'],['mais','Equipa e conta','users']];
+const SO_VALORES=['pagamentos','compras','pendentes'];
 const navList=()=>NAV.filter(n=>S.verValores||!SO_VALORES.includes(n[0]));
 const TABS=[['inicio','Início','home'],['clientes','Clientes','users'],['agenda','Agenda','cal'],['pedidos','Pedidos','tool'],['mais','Mais','menu']];
-const TITLES={login:'Entrar',semacesso:'Sem acesso',inicio:'Início',leads:'Negócios',clientes:'Clientes',agenda:'Agenda e tarefas',visitas:'Visitas',encomendas:'Encomendas',propostas:'Propostas',avencas:'Avenças',pedidos:'Pedidos e assistência',pagamentos:'Recebimentos',catalogo:'Catálogo',compras:'Compras',assistente:'Assistente Claude',mais:'Equipa e conta',ficha:'Cliente'};
+const TITLES={login:'Entrar',semacesso:'Sem acesso',inicio:'Início',leads:'Negócios',clientes:'Clientes',agenda:'Agenda e tarefas',visitas:'Visitas',encomendas:'Encomendas',propostas:'Propostas',avencas:'Avenças',pedidos:'Pedidos e assistência',pagamentos:'Recebimentos',pendentes:'Pendentes',catalogo:'Catálogo',compras:'Compras',assistente:'Assistente Claude',mais:'Equipa e conta',ficha:'Cliente'};
 function go(v,params={},push=true){if(push&&(S.view!==v||JSON.stringify(S.params)!==JSON.stringify(params)))S.hist.push([S.view,S.params]);if(S.hist.length>30)S.hist.shift();S.view=v;S.params=params;render();window.scrollTo(0,0)}
 function back(){const h=S.hist.pop();if(h){S.view=h[0];S.params=h[1];render();window.scrollTo(0,0)}else go('inicio',{},false)}
 function navCounts(){return{pedidos:D('pedidos').filter(p=>p.estado!=='Concluído').length,pagamentos:D('pagamentos').filter(p=>p.estado!=='fechado').length,agenda:D('tarefas').filter(t=>!t.feito&&t.data&&t.data<=TODAY()&&isMine(t)).length}}
@@ -644,6 +644,17 @@ function match(view,d,keys){const q=norm(S.q[view]);if(!q)return true;const hay=
 
 /* ================= views ================= */
 const VIEWS={};
+/* Pendentes: todos os clientes com dinheiro por receber no XD (só para quem vê valores) */
+VIEWS.pendentes=()=>loadingOr(()=>{
+ if(!S.verValores)return `<div class="pg"><div class="panel empty"><b>Sem acesso</b>Este ecrã é só para a administração.</div></div>`;
+ const g=new Map();D('xd_documentos').filter(d=>d.entidade&&+d.pendente>0.005).forEach(d=>{const x=g.get(d.entidade)||{v:0,a:0,n:0};x.v+=+d.pendente;x.n++;x.a=Math.max(x.a,diasAtraso(d));g.set(d.entidade,x)});
+ const ord=S.f.pendentes==='Mais atrasados'?(a,b)=>b[1].a-a[1].a||b[1].v-a[1].v:(a,b)=>b[1].v-a[1].v;
+ const all=[...g.entries()].filter(([id])=>match('pendentes',{nome:entName(id)},['nome'])).sort(ord);
+ const L=all.filter(([id])=>!emLit(id)),Lit=all.filter(([id])=>emLit(id)),tot=L.reduce((s,[,x])=>s+x.v,0),totLit=Lit.reduce((s,[,x])=>s+x.v,0);
+ const row=([id,x])=>`<div class="row" role="button" tabindex="0" data-act="ficha" data-id="${id}"><span class="rt"><span class="r1">${esc(entName(id))}</span><span class="r2">${x.n} documento${x.n===1?'':'s'}${x.a?` · mais antigo há <span style="${x.a>30?'color:var(--bad)':''}">${x.a} dias</span>`:''}</span></span><span class="rr"><span class="num">${eur(x.v)}</span></span></div>`;
+ return `<div class="pg">${toolbarH('pendentes',['Maior valor','Mais atrasados'])}<div class="kpis" style="margin-bottom:12px"><div class="kpi hl"><span class="eyebrow">Total em dívida</span><span class="v">${eur(tot)}</span><span class="s">${L.length} cliente${L.length===1?'':'s'} · pendentes no XD</span></div>${Lit.length?`<div class="kpi"><span class="eyebrow">Em litígio</span><span class="v">${eur(totLit)}</span><span class="s">${Lit.length} cliente${Lit.length===1?'':'s'} · fora do total</span></div>`:''}</div>
+ ${L.length?`<div class="panel">${L.map(row).join('')}</div>`:'<div class="panel empty"><b>Sem pendentes</b>Nenhum cliente com valores por receber no XD.</div>'}
+ ${Lit.length?`<div class="panel" style="margin-top:16px"><div class="ph"><h2>Em litígio</h2><span class="note">não contam no total</span></div>${Lit.map(row).join('')}</div>`:''}</div>`});
 
 VIEWS.inicio=()=>loadingOr(()=>{
  const t=TODAY(),m=t.slice(0,7),pm=addMonths(t,-1).slice(0,7);
@@ -667,7 +678,7 @@ VIEWS.inicio=()=>loadingOr(()=>{
  const kpis=temXd?`<div class="kpis">
   <div class="kpi"><span class="eyebrow">Vendas de hoje</span><span class="v">${eur(vHoje)}</span><span class="s">${xvHoje.length} documento${xvHoje.length===1?'':'s'} no XD · sem IVA</span></div>
   <div class="kpi"><span class="eyebrow">Vendas do mês</span><span class="v">${eur(vMes)}</span><span class="s">${dltX===null?'faturado no XD · sem IVA':`<span class="${dltX>=0?'up':'dn'}">${dltX>=0?'+':''}${dltX}%</span> vs. mesmo dia do mês anterior`}</span></div>
-  <div class="kpi ${pendTot>0.005?'hl':''}"><span class="eyebrow">Por receber</span><span class="v">${eur(pendTot)}</span><span class="s">pendentes no XD · ${pendCli} cliente${pendCli===1?'':'s'}</span></div>
+  <button class="kpi ${pendTot>0.005?'hl':''}" data-act="go" data-v="pendentes"><span class="eyebrow">Por receber</span><span class="v">${eur(pendTot)}</span><span class="s">pendentes no XD · ${pendCli} cliente${pendCli===1?'':'s'}</span></button>
   ${kpiCli}</div>`:`<div class="kpis">
   <button class="kpi" data-act="go" data-v="encomendas"><span class="eyebrow">Vendas do mês</span><span class="v">${eur(vm)}</span><span class="s">${dlt===null?'Sem dados do mês anterior':`<span class="${dlt>=0?'up':'dn'}">${dlt>=0?'+':''}${dlt}%</span> vs. mês anterior`}</span></button>
   <button class="kpi ${rec.length?'hl':''}" data-act="pagf" data-c="Por receber"><span class="eyebrow">Por receber</span><span class="v">${eur(rec.reduce((s,p)=>s+(+p.valor||0),0))}</span><span class="s">${rec.length} pagamento${rec.length===1?'':'s'} pendente${rec.length===1?'':'s'}</span></button>
