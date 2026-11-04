@@ -383,7 +383,10 @@ const ic=(n,s=20)=>`<svg class="ic" width="${s}" height="${s}" viewBox="0 0 24 2
 
 /* ================= modelo de dados ================= */
 const TIPOS={comodato:'Comodato',livre:'Livre',agua:'Água',vending:'Vending'};
-const ESTADOS={lead:'Lead',potencial:'Potencial',cliente:'Cliente',inativo:'Inativo'};
+const ESTADOS={lead:'Lead',contactado:'Contactado',proposta:'Proposta',cliente:'Cliente',cancelado:'Cancelado',potencial:'Potencial (XD)',inativo:'Inativo'};
+const ANDAMENTO=['lead','contactado','proposta'];
+/* avança o estado do negócio sem nunca andar para trás (cliente, cancelado e inativo não mudam) */
+const avancaEst=async(id,para)=>{const e=ent(id);if(!e)return;const ord=['potencial','lead','contactado','proposta'],a=ord.indexOf(e.estado||'lead'),b=ord.indexOf(para);if(a>=0&&b>a)await patch('entidades',id,{estado:para})};
 const ZONAS=['Fafe','Guimarães','Vizela','Lixa','Felgueiras','Outra'];
 const ORIGENS=['Facebook','Instagram','Site / loja online','Indicação','Porta a porta','Telefone','Outra'];
 const TIPOSV=['No local','Telefone','Email','WhatsApp'];
@@ -551,7 +554,7 @@ const toneEnc={Nova:'gold','Em preparação':'info',Entregue:'ok',Faturada:'mute
 const toneProp={Rascunho:'mute',Enviada:'info',Aceite:'ok',Recusada:'bad'};
 const tonePed={Aberto:'bad',Agendado:'warn','Em curso':'info','Concluído':'ok'};
 const tonePag={receber:'bad',recibo:'warn',fechado:'ok'};
-const toneEst={lead:'info',potencial:'gold',cliente:'ok',inativo:'mute'};
+const toneEst={lead:'info',contactado:'warn',proposta:'gold',cliente:'ok',cancelado:'bad',potencial:'mute',inativo:'mute'};
 const toneRes={'Realizou encomenda':'ok',Reclamação:'bad',Proposta:'info','Contacto agendado':'gold',Prospeção:'gold'};
 const badge=(t,tone='mute')=>`<span class="badge t-${tone}">${esc(t)}</span>`;
 
@@ -580,11 +583,11 @@ function openSheet(html){$('#sheetc').innerHTML=html;$('#sheet').hidden=false;do
 function closeSheet(){$('#sheet').hidden=true;$('#sheetc').innerHTML='';document.body.classList.remove('lock');S.form=null;S.aiCtl?.abort()}
 
 /* ================= navegação ================= */
-const NAV=[['inicio','Início','home'],['leads','Leads e potenciais','lead'],['clientes','Clientes','users'],['agenda','Agenda e tarefas','cal'],['visitas','Visitas','pin'],['sep'],['encomendas','Encomendas','box'],['propostas','Propostas','doc'],['avencas','Avenças','repeat'],['pedidos','Pedidos e assistência','tool'],['pagamentos','Recebimentos','euro'],['sep'],['catalogo','Catálogo','grid'],['compras','Compras','cart'],['assistente','Assistente Claude','spark'],['sep'],['mais','Equipa e conta','users']];
+const NAV=[['inicio','Início','home'],['leads','Negócios','lead'],['clientes','Clientes','users'],['agenda','Agenda e tarefas','cal'],['visitas','Visitas','pin'],['sep'],['encomendas','Encomendas','box'],['avencas','Avenças','repeat'],['pedidos','Pedidos e assistência','tool'],['pagamentos','Recebimentos','euro'],['sep'],['catalogo','Catálogo','grid'],['compras','Compras','cart'],['assistente','Assistente Claude','spark'],['sep'],['mais','Equipa e conta','users']];
 const SO_VALORES=['pagamentos','compras'];
 const navList=()=>NAV.filter(n=>S.verValores||!SO_VALORES.includes(n[0]));
 const TABS=[['inicio','Início','home'],['clientes','Clientes','users'],['agenda','Agenda','cal'],['pedidos','Pedidos','tool'],['mais','Mais','menu']];
-const TITLES={login:'Entrar',semacesso:'Sem acesso',inicio:'Início',leads:'Leads e potenciais',clientes:'Clientes',agenda:'Agenda e tarefas',visitas:'Visitas',encomendas:'Encomendas',propostas:'Propostas',avencas:'Avenças',pedidos:'Pedidos e assistência',pagamentos:'Recebimentos',catalogo:'Catálogo',compras:'Compras',assistente:'Assistente Claude',mais:'Equipa e conta',ficha:'Cliente'};
+const TITLES={login:'Entrar',semacesso:'Sem acesso',inicio:'Início',leads:'Negócios',clientes:'Clientes',agenda:'Agenda e tarefas',visitas:'Visitas',encomendas:'Encomendas',propostas:'Propostas',avencas:'Avenças',pedidos:'Pedidos e assistência',pagamentos:'Recebimentos',catalogo:'Catálogo',compras:'Compras',assistente:'Assistente Claude',mais:'Equipa e conta',ficha:'Cliente'};
 function go(v,params={},push=true){if(push&&(S.view!==v||JSON.stringify(S.params)!==JSON.stringify(params)))S.hist.push([S.view,S.params]);if(S.hist.length>30)S.hist.shift();S.view=v;S.params=params;render();window.scrollTo(0,0)}
 function back(){const h=S.hist.pop();if(h){S.view=h[0];S.params=h[1];render();window.scrollTo(0,0)}else go('inicio',{},false)}
 function navCounts(){return{pedidos:D('pedidos').filter(p=>p.estado!=='Concluído').length,pagamentos:D('pagamentos').filter(p=>p.estado!=='fechado').length,agenda:D('tarefas').filter(t=>!t.feito&&t.data&&t.data<=TODAY()&&isMine(t)).length}}
@@ -595,7 +598,7 @@ function renderShell(){
  $('#nv').innerHTML=navList().map(n=>n[0]==='sep'?'<div class="sep"></div>':`<button class="${navKey===n[0]?'on':''}" data-act="go" data-v="${n[0]}">${ic(n[2],19)}<span>${n[1]}</span>${cn[n[0]]?`<span class="cnt">${cn[n[0]]}</span>`:''}</button>`).join('');
  const tabKey=TABS.some(t=>t[0]===navKey)?navKey:'mais';
  $('#tabbar').innerHTML=TABS.map(t=>`<button class="${tabKey===t[0]?'on':''}" data-act="go" data-v="${t[0]}">${ic(t[2],22)}<span>${t[1]}</span></button>`).join('');
- const showBack=S.view==='ficha'||(S.hist.length&&!['inicio','clientes','agenda','pedidos','mais'].includes(S.view)&&innerWidth<960);
+ const showBack=S.view==='ficha'||(S.view!=='inicio'&&innerWidth<960);
  $('#back').hidden=!showBack;$('#back').innerHTML=ic('back',22);
  $('#ttl').textContent=S.view==='ficha'?(ent(S.params.id)?.nome||'Cliente'):TITLES[S.view]||'';
  $('#eyb').textContent=S.view==='ficha'?(ESTADOS[ent(S.params.id)?.estado]||'Cliente'):'Coronel Café';
@@ -647,7 +650,7 @@ VIEWS.inicio=()=>loadingOr(()=>{
  const vm=enc.filter(e=>(e.data||'').startsWith(m)).reduce((s,e)=>s+docTotal(e),0);
  const vpm=enc.filter(e=>(e.data||'').startsWith(pm)).reduce((s,e)=>s+docTotal(e),0);
  const pag=D('pagamentos'),rec=pag.filter(p=>p.estado==='receber'),reci=pag.filter(p=>p.estado==='recibo');
- const ents=D('entidades'),cli=ents.filter(e=>e.estado==='cliente').length,lds=ents.filter(e=>e.estado==='lead'||e.estado==='potencial').length;
+ const ents=D('entidades'),cli=ents.filter(e=>e.estado==='cliente').length,lds=ents.filter(e=>ANDAMENTO.includes(e.estado||'lead')).length;
  const total=COLS.reduce((s,c)=>s+(c==='equipa'?0:S.data[c].size),0);
  const h=new Date().getHours(),sal=h<13?'Bom dia':h<20?'Boa tarde':'Boa noite';
  const XV=xdVendas(),temXd=XV.length>0;
@@ -659,7 +662,7 @@ VIEWS.inicio=()=>loadingOr(()=>{
  const dlt=vpm?Math.round((vm-vpm)/vpm*100):null;
  let out=`${roBanner()}<div class="hello"><div class="eyebrow">${new Date().toLocaleDateString('pt-PT',{weekday:'long',day:'numeric',month:'long'})}</div><h1>${sal}${S.me?.name?', '+esc(S.me.name.split(' ')[0]):''}</h1></div>`;
  if(!total)out+=`<div class="panel welcome"><h2>O seu CRM está pronto.</h2><ol><li>Crie o primeiro cliente ou lead com o botão <b>+</b>.</li><li>Adicione os artigos ao catálogo para fazer encomendas e propostas.</li><li>Registe visitas, tarefas, avenças e pedidos de assistência.</li></ol><p class="note">Os clientes do XD Software podem ser importados depois, de uma só vez. Para experimentar já, carregue dados de exemplo e apague-os quando quiser.</p><div>${S.canWrite&&S.db?'<button class="btn gold" data-act="seed">Carregar dados de exemplo</button>':''}</div></div>`;
- const kpiCli=`<button class="kpi" data-act="go" data-v="clientes"><span class="eyebrow">Clientes ativos</span><span class="v">${cli}</span><span class="s">${lds} leads e potenciais</span></button>`;
+ const kpiCli=`<button class="kpi" data-act="go" data-v="clientes"><span class="eyebrow">Clientes ativos</span><span class="v">${cli}</span><span class="s">${lds} negócio${lds===1?'':'s'} em andamento</span></button>`;
  const kpis=temXd?`<div class="kpis">
   <div class="kpi"><span class="eyebrow">Vendas de hoje</span><span class="v">${eur(vHoje)}</span><span class="s">${xvHoje.length} documento${xvHoje.length===1?'':'s'} no XD · sem IVA</span></div>
   <div class="kpi"><span class="eyebrow">Vendas do mês</span><span class="v">${eur(vMes)}</span><span class="s">${dltX===null?'faturado no XD · sem IVA':`<span class="${dltX>=0?'up':'dn'}">${dltX>=0?'+':''}${dltX}%</span> vs. mesmo dia do mês anterior`}</span></div>
@@ -669,6 +672,7 @@ VIEWS.inicio=()=>loadingOr(()=>{
   <button class="kpi ${rec.length?'hl':''}" data-act="pagf" data-c="Por receber"><span class="eyebrow">Por receber</span><span class="v">${eur(rec.reduce((s,p)=>s+(+p.valor||0),0))}</span><span class="s">${rec.length} pagamento${rec.length===1?'':'s'} pendente${rec.length===1?'':'s'}</span></button>
   <button class="kpi ${reci.length?'hl':''}" data-act="pagf" data-c="Recibo por emitir"><span class="eyebrow">Recibos por emitir</span><span class="v">${reci.length}</span><span class="s">${eur(reci.reduce((s,p)=>s+(+p.valor||0),0))} recebidos</span></button>
   ${kpiCli}</div>`;
+ if(S.verValores)out+=`<div style="margin-bottom:16px">${kpis}</div>`; /* primeiro o faturado, depois as tarefas e o que precisa de atenção */
  const hoje=dayItems(t,'eu'),atr=overdue('eu');
  const att=attention();
  out+=`<div class="grid2"><div class="panel"><div class="ph"><h2>Hoje</h2><button class="lnk" data-act="go" data-v="agenda">Agenda</button></div>
@@ -678,7 +682,6 @@ VIEWS.inicio=()=>loadingOr(()=>{
   <div class="panel"><div class="ph"><h2>Precisa de atenção</h2></div>${att.length?att.map(a=>`<div class="row" role="button" tabindex="0" data-act="${a.act}" data-v="${a.v||''}" data-c="${esc(a.c||'')}" data-id="${a.id||''}" data-col="${a.col||''}"><span class="rt"><span class="r1">${esc(a.t)}</span><span class="r2">${esc(a.s)}</span></span><span class="rr">${badge(a.b,a.tone)}</span></div>`).join(''):'<div class="empty"><b>Está tudo em dia</b>Sem avenças vencidas, pedidos abertos ou recibos por emitir.</div>'}</div></div>`;
  out+=colabH();
  if(!S.verValores)return `<div class="pg">${out}</div>`;
- out+=kpis;
  // gráfico
  const months=[];for(let i=11;i>=0;i--){const k=addMonths(t.slice(0,8)+'01',-i).slice(0,7);months.push([k,temXd?XV.filter(d=>d.data.startsWith(k)).reduce((s,d)=>s+xdLiq(d),0):enc.filter(e=>(e.data||'').startsWith(k)).reduce((s,e)=>s+docTotal(e),0)])}
  const yr=t.slice(0,4),ta={};
@@ -730,6 +733,8 @@ function dayItems(ds,quem){
  return out.sort((a,b)=>((!!a.done)-(!!b.done))||(a.time||'99').localeCompare(b.time||'99'))}
 function overdue(quem){const t=TODAY(),mine=d=>quem!=='eu'||isMine(d),o=[];
  D('tarefas').filter(x=>!x.feito&&x.data&&x.data<t&&mine(x)).sort((a,b)=>a.data.localeCompare(b.data)).forEach(x=>o.push({k:'Tarefa',col:'tarefas',id:x.id,time:fD(x.data),title:x.titulo,sub:x.entidade?entName(x.entidade):'',task:true}));
+ /* visitas marcadas (Contacto agendado) que já passaram e ainda não foram registadas como feitas */
+ D('visitas').filter(x=>x.resumo==='Contacto agendado'&&x.data&&x.data.slice(0,10)<t&&mine(x)).forEach(x=>o.push({k:'Visita por registar',col:'visitas',id:x.id,time:fD(x.data.slice(0,10)),title:entName(x.entidade),sub:'Abra e mude o resumo para o que aconteceu'}));
  D('entidades').filter(x=>x.proximoContacto&&x.proximoContacto<t&&x.estado!=='inativo'&&mine(x)).forEach(x=>o.push({k:'Follow-up',col:'ficha',id:x.id,time:fD(x.proximoContacto),title:x.nome,sub:x.telemovel||x.telefone||''}));
  return o}
 function itemRow(it){
@@ -763,8 +768,25 @@ function entListView(view,estados,chips){
 function entRow(e){const tp=(e.tipos||[]).map(k=>TIPOS[k]).join(' · ');return rowH({act:'ficha',id:e.id,av:initials(e.nome),avk:e.estado!=='cliente',title:e.nome,sub:[e.localidade||e.zona,tp,e.contacto].filter(Boolean).join(' — '),badges:(e.estado!=='cliente'?badge(ESTADOS[e.estado||'lead'],toneEst[e.estado||'lead']):'')+(e.proximoContacto&&e.proximoContacto<=TODAY()?badge('Contactar','gold'):'')})}
 VIEWS.clientes=()=>loadingOr(()=>{const chips=['Todos','Comodato','Livre','Água','Vending','Os meus','Inativos'];const{items}=entListView('clientes',['cliente'],chips);
  return `<div class="pg">${roBanner()}${toolbarH('clientes',chips,'entidades','Novo cliente',{estado:'cliente'})}<div class="sum"><b>${items.length}</b> cliente${items.length===1?'':'s'}</div>${listBlock('clientes',items,entRow,'<b>Sem clientes</b>Crie um cliente ou converta um lead em cliente.')}</div>`});
-VIEWS.leads=()=>loadingOr(()=>{const chips=['Todos','Leads','Potenciais','Comodato','Água','Vending','Os meus'];const{items}=entListView('leads',['lead','potencial'],chips);
- return `<div class="pg">${roBanner()}${toolbarH('leads',chips,'entidades','Novo lead',{estado:'lead'})}<div class="sum"><b>${items.length}</b> em prospeção. Converta em cliente quando fechar negócio.</div>${listBlock('leads',items,entRow,'<b>Sem leads</b>Os contactos novos (Facebook, Instagram, porta a porta) entram aqui.')}</div>`});
+/* Negócios: leads e propostas no mesmo ecrã. "Em andamento" = Lead, Contactado e Proposta. Os potenciais do XD ficam à parte até passarem a lead. */
+VIEWS.leads=()=>loadingOr(()=>{
+ const chips=['Em andamento','Lead','Contactado','Proposta','Propostas','Cancelados','Potenciais (XD)','Os meus'];
+ const chip=chips.includes(S.f.leads)?S.f.leads:chips[0],E=D('entidades'),est=e=>e.estado||'lead';
+ const n=k=>E.filter(e=>est(e)===k).length;
+ const pa=D('propostas').filter(p=>['Rascunho','Enviada'].includes(p.estado||'Rascunho')),ano=TODAY().slice(0,4);
+ const gan=D('propostas').filter(p=>p.estado==='Aceite'&&(p.data||'').startsWith(ano)).length;
+ const k=(c,t,v,sub)=>`<button class="kpi ${chip===c?'hl':''}" data-act="chip" data-v="leads" data-c="${c}"><span class="eyebrow">${t}</span><span class="v">${v}</span><span class="s">${sub}</span></button>`;
+ const funil=`<div class="kpis">${k('Lead','Leads',n('lead'),'por contactar')}${k('Contactado','Contactados',n('contactado'),'à espera de proposta')}${k('Propostas','Propostas em aberto',pa.length,S.verValores?eur(pa.reduce((s,x)=>s+docTotal(x),0)):'enviadas ou em rascunho')}${k('Cancelados','Ganhos · perdidos',gan+' · '+n('cancelado'),'propostas aceites este ano · cancelados')}</div>`;
+ if(chip==='Propostas'){
+  const L=pa.filter(d=>match('leads',d,['entidade','obs','estado'])).sort(byDateDesc);
+  return `<div class="pg">${roBanner()}${toolbarH('leads',chips,'propostas','Nova proposta')}${funil}<div class="sum"><b>${L.length}</b> proposta${L.length===1?'':'s'} em aberto · <button class="lnk" data-act="go" data-v="propostas">Ver todas as propostas</button></div>${listBlock('leads',L,propRow,'<b>Sem propostas em aberto</b>Crie uma proposta a partir da ficha do lead.')}</div>`}
+ let items=chip==='Potenciais (XD)'?E.filter(e=>e.estado==='potencial'):chip==='Cancelados'?E.filter(e=>e.estado==='cancelado'):E.filter(e=>ANDAMENTO.includes(est(e)));
+ if(chip==='Lead'||chip==='Contactado'||chip==='Proposta')items=items.filter(e=>est(e)===chip.toLowerCase());
+ if(chip==='Os meus')items=items.filter(isMine);
+ const ordem={lead:0,contactado:1,proposta:2};
+ items=items.filter(d=>match('leads',d,['nome','localidade','contacto','nif','telefone','telemovel','email','codigoXd','zona'])).sort((a,b)=>chip==='Em andamento'||chip==='Os meus'?(ordem[est(b)]-ordem[est(a)])||(a.nome||'').localeCompare(b.nome||'','pt'):(a.nome||'').localeCompare(b.nome||'','pt'));
+ const nota=chip==='Potenciais (XD)'?'fichas do XD que nunca compraram. Abra uma e carregue em "Passar a lead" para a pôr em andamento.':chip==='Cancelados'?'negócios que não avançaram.':'em andamento. O estado avança sozinho: visita registada → Contactado, proposta criada → Proposta.';
+ return `<div class="pg">${roBanner()}${toolbarH('leads',chips,'entidades','Novo lead',{estado:'lead'})}${funil}<div class="sum"><b>${items.length}</b> ${nota}</div>${listBlock('leads',items,entRow,'<b>Sem negócios aqui</b>Os contactos novos (Facebook, Instagram, porta a porta) entram como lead.')}</div>`});
 
 /* --- ficha --- */
 function related(id){const r={};['visitas','encomendas','propostas','pedidos','avencas','pagamentos','tarefas'].forEach(c=>r[c]=D(c).filter(d=>d.entidade===id));
@@ -784,7 +806,7 @@ VIEWS.ficha=()=>loadingOr(()=>{
   <a class="act ${e.telemovel?'':'off'}" href="https://wa.me/${esc(waNum(e.telemovel))}" target="_blank" rel="noopener">${ic('wa')}<span>WhatsApp</span></a>
   <a class="act ${e.email?'':'off'}" href="mailto:${esc(e.email||'')}">${ic('mail')}<span>Email</span></a>
   <a class="act ${addr?'':'off'}" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}" target="_blank" rel="noopener">${ic('pin')}<span>Mapa</span></a></div>
- ${S.canWrite&&S.db?`<div class="tbr" style="flex-wrap:wrap;gap:8px">${est==='lead'?`<button class="btn sm" data-act="conv" data-id="${e.id}" data-c="potencial">Passar a potencial</button>`:''}${est==='lead'||est==='potencial'?`<button class="btn gold sm" data-act="conv" data-id="${e.id}" data-c="cliente">Converter em cliente</button>`:''}<button class="btn sm" data-act="new" data-col="visitas" data-preset='${esc(JSON.stringify({entidade:e.id}))}'>${ic('pin',16)}Nova visita</button><button class="btn sm" data-act="new" data-col="encomendas" data-preset='${esc(JSON.stringify({entidade:e.id}))}'>${ic('box',16)}Encomenda</button><button class="btn sm" data-act="new" data-col="pedidos" data-preset='${esc(JSON.stringify({entidade:e.id}))}'>${ic('tool',16)}Pedido</button></div>`:''}
+ ${S.canWrite&&S.db?`<div class="tbr" style="flex-wrap:wrap;gap:8px">${['potencial','cancelado','inativo'].includes(est)?`<button class="btn sm" data-act="conv" data-id="${e.id}" data-c="lead">Passar a lead</button>`:''}${est==='lead'?`<button class="btn sm" data-act="conv" data-id="${e.id}" data-c="contactado">Marcar contactado</button>`:''}${ANDAMENTO.includes(est)?`<button class="btn gold sm" data-act="conv" data-id="${e.id}" data-c="cliente">Converter em cliente</button><button class="btn sm" data-act="conv" data-id="${e.id}" data-c="cancelado">Cancelar negócio</button>`:''}<button class="btn sm" data-act="new" data-col="visitas" data-preset='${esc(JSON.stringify({entidade:e.id}))}'>${ic('pin',16)}Nova visita</button><button class="btn sm" data-act="new" data-col="encomendas" data-preset='${esc(JSON.stringify({entidade:e.id}))}'>${ic('box',16)}Encomenda</button><button class="btn sm" data-act="new" data-col="pedidos" data-preset='${esc(JSON.stringify({entidade:e.id}))}'>${ic('tool',16)}Pedido</button></div>`:''}
  <div class="tabs">${tabs.map(([k,l,n])=>`<button class="${tab===k?'on':''}" data-act="ftab" data-c="${k}">${l}${n?`<i>${n}</i>`:''}</button>`).join('')}</div>`;
  const sub=(col,items,fn,emptyT,preset)=>`${S.canWrite&&S.db?`<div><button class="btn sm" data-act="new" data-col="${col}" data-preset='${esc(JSON.stringify(Object.assign({entidade:e.id},preset||{})))}'>${ic('plus',16)}${NOMES[col][1]}</button></div>`:''}${items.length?`<div class="panel">${items.map(fn).join('')}</div>`:`<div class="panel empty">${emptyT}</div>`}`;
  if(tab==='resumo'){
@@ -898,6 +920,8 @@ async function saveForm(btn){
   if(vals.proximoContacto&&vals.entidade)await patch('entidades',vals.entidade,{proximoContacto:vals.proximoContacto});
   const ck=$('#sugtask');if(ck&&ck.checked&&fm.sug)await save('tarefas',null,{titulo:fm.sug,data:vals.proximoContacto||addDays(TODAY(),1),resp:S.uid||'',prioridade:'normal',entidade:vals.entidade,feito:false});
  }
+ if(col==='visitas'&&vals.entidade&&vals.resumo!=='Contacto agendado')await avancaEst(vals.entidade,'contactado');
+ if(col==='propostas'&&vals.entidade){if(vals.estado==='Recusada'){if(ent(vals.entidade)?.estado==='proposta')await patch('entidades',vals.entidade,{estado:'cancelado'})}else await avancaEst(vals.entidade,'proposta')}
  if(fm.extra?.fromProp&&col==='encomendas')await patch('propostas',fm.extra.fromProp,{estado:'Aceite',encomenda:id});
  closeSheet();toast(wasNew?'Criado':'Guardado');
  if(wasNew&&col==='encomendas')encMailSheet(id);
@@ -1024,7 +1048,7 @@ const ACT={
  saveform:(d,b)=>saveForm(b),
  del:async(d,b)=>{if(!b.dataset.armed){b.dataset.armed=1;b.textContent='Confirmar apagar';return}const fm=S.form;b.disabled=true;if(await remove(fm.col,fm.id)){closeSheet();toast('Apagado');if(fm.col==='entidades'&&S.view==='ficha')back()}},
  tgl:async d=>{const t=S.data.tarefas.get(d.id);if(t)await patch('tarefas',d.id,{feito:!t.feito})},
- conv:async d=>{if(await patch('entidades',d.id,{estado:d.c})){toast(d.c==='cliente'?'Convertido em cliente':'Passou a potencial');if(d.c==='cliente'&&!ent(d.id)?.codigoXd)xdSheet(d.id)}},
+ conv:async d=>{if(await patch('entidades',d.id,{estado:d.c})){toast(d.c==='cliente'?'Convertido em cliente':'Passou a '+ESTADOS[d.c].toLowerCase());if(d.c==='cliente'&&!ent(d.id)?.codigoXd)xdSheet(d.id)}},
  xdgo:()=>{},
  xdPed:d=>xdSheet(d.id),
  pedOk:async()=>{if(await patch('pedidos',S.form.id,{estado:'Concluído'})){closeSheet();toast('Pedido concluído')}},
