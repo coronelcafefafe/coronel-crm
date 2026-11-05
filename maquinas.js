@@ -586,6 +586,19 @@ window.MAQ_INIT = function () {
       .filter(x => (x.p && x.p <= ate && !(c === 'Hoje' && feitas.includes(x.m))) || (c === 'Hoje' && x.m.estado === 'parada' && x.m.freq))
       .filter(x => match('rota', { ...x.m, ...(x.e || {}), numero: x.m.numero }, ['numero', 'nome', 'localidade', 'morada']));
     const diaV = c === 'Hoje' || c === 'Amanhã', dia = c === 'Hoje' ? TODAY() : addD(TODAY(), 1);
+    /* em "Próximos 7 dias" uma máquina aparece em todas as voltas da semana (ex.: hospital segunda, quarta e sexta), não só na próxima */
+    if (!diaV) L = L.flatMap(x => {
+      if (!x.p || !FREQ_D[x.m.freq]) return [x];
+      const out = [x], int = FREQ_D[x.m.freq], dias = (x.m.dias || []).map(String).filter(k => DIAS[k]);
+      let d = x.p < TODAY() ? TODAY() : x.p;
+      for (let k = 0; k < 10; k++) {
+        d = addD(d, dias.length ? Math.max(1, int - 3) : int);
+        if (dias.length) for (let i = 0; i < 7 && !dias.includes(String(wd(d))); i++) d = addD(d, 1);
+        if (d > ate) break;
+        out.push({ ...x, p: d });
+      }
+      return out;
+    });
     /* agrupado pelo dia da volta (e não pela zona): em "Próximos 7 dias" cada dia é um bloco, pela ordem da volta */
     const diaDe = x => { const p = x.p && x.p > TODAY() ? x.p : TODAY(); return p; };
     const zona = x => diaV ? 'Volta de ' + DIA_N[wd(dia)] : (() => { const d = diaDe(x); return (d === TODAY() ? 'Hoje · ' : '') + DIA_N[wd(d)].replace(/^./, c => c.toUpperCase()) + ' ' + fD(d); })();
