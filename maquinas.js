@@ -117,7 +117,7 @@ window.MAQ_INIT = function () {
   function proxima(m) {
     if (!m || !m.freq || !FREQ_D[m.freq] || !m.entidade || m.estado === 'armazem' || m.estado === 'abate') return null;
     const u = ultimoAb(m.id), dias = (m.dias || []).map(String).filter(x => DIAS[x]), int = FREQ_D[m.freq];
-    if (!u) return TODAY();
+    if (!u) { let d = TODAY(); if (dias.length) for (let i = 0; i < 7 && !dias.includes(String(wd(d))); i++) d = addD(d, 1); return d; }
     let d = addD(u, dias.length ? Math.max(1, int - 3) : int);
     if (dias.length) for (let i = 0; i < 7 && !dias.includes(String(wd(d))); i++) d = addD(d, 1);
     return d;
@@ -586,8 +586,11 @@ window.MAQ_INIT = function () {
       .filter(x => (x.p && x.p <= ate && !(c === 'Hoje' && feitas.includes(x.m))) || (c === 'Hoje' && x.m.estado === 'parada' && x.m.freq))
       .filter(x => match('rota', { ...x.m, ...(x.e || {}), numero: x.m.numero }, ['numero', 'nome', 'localidade', 'morada']));
     const diaV = c === 'Hoje' || c === 'Amanhã', dia = c === 'Hoje' ? TODAY() : addD(TODAY(), 1);
-    const zona = x => diaV ? 'Volta de ' + DIA_N[wd(dia)] : (x.e?.zona || x.e?.localidade || 'Sem zona');
-    if (diaV) L.sort((a, b) => ((a.m.ordem ?? 9e9) - (b.m.ordem ?? 9e9)) || (parseInt(a.m.numero) || 0) - (parseInt(b.m.numero) || 0)); else L.sort((a, b) => zona(a).localeCompare(zona(b), 'pt') || ((a.m.ordem ?? 9e9) - (b.m.ordem ?? 9e9)) || String(a.p || '').localeCompare(String(b.p || '')) || (parseInt(a.m.numero) || 0) - (parseInt(b.m.numero) || 0));
+    /* agrupado pelo dia da volta (e não pela zona): em "Próximos 7 dias" cada dia é um bloco, pela ordem da volta */
+    const diaDe = x => { const p = x.p && x.p > TODAY() ? x.p : TODAY(); return p; };
+    const zona = x => diaV ? 'Volta de ' + DIA_N[wd(dia)] : (() => { const d = diaDe(x); return (d === TODAY() ? 'Hoje · ' : '') + DIA_N[wd(d)].replace(/^./, c => c.toUpperCase()) + ' ' + fD(d); })();
+    if (!diaV) L.sort((a, b) => diaDe(a).localeCompare(diaDe(b)) || ((a.m.ordem ?? 9e9) - (b.m.ordem ?? 9e9)) || (parseInt(a.m.numero) || 0) - (parseInt(b.m.numero) || 0));
+    else L.sort((a, b) => ((a.m.ordem ?? 9e9) - (b.m.ordem ?? 9e9)) || (parseInt(a.m.numero) || 0) - (parseInt(b.m.numero) || 0));
     const grupos = new Map(); L.forEach(x => { const z = zona(x); if (!grupos.has(z)) grupos.set(z, []); grupos.get(z).push(x); });
     const semRota = ativas.filter(m => !m.freq).length;
     const top = `<div class="tb"><div class="tbr"><label class="srch">${ic('search', 18)}<input id="q-rota" data-q="rota" type="search" placeholder="Máquina, cliente ou localidade" value="${esc(S.q.rota || '')}" autocomplete="off"></label></div>
