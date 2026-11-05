@@ -43,6 +43,7 @@ window.MAQ_INIT = function () {
     { k: 'maqTipo', l: 'Em que máquina entra', t: 'sel', o: { cafe: 'Máquina de café (bebidas quentes)', snack: 'Máquina de snacks (comida e bebidas frias)' } },
     { k: 'peca', l: 'É peça (aparece nas assistências)', t: 'bool' },
     { k: 'vidaServicos', l: 'Duração típica da peça (n.º de serviços, opcional)', t: 'num' },
+    { k: 'pesoKg', l: 'Peso por unidade (kg) · para a carga da carrinha', t: 'num' },
     { k: 'modelos', l: 'Modelos de máquina onde serve a peça (separados por vírgula, ex.: Brio 250, Brio 3)', t: 'text', full: 1 },
     { k: 'grupoPeca', l: 'Grupo da peça (ex.: Grupo café, Caldeira, Moinho)', t: 'text' },
   );
@@ -584,8 +585,9 @@ window.MAQ_INIT = function () {
     let L = ativas.map(m => ({ m, p: proxima(m), e: S.data.entidades.get(m.entidade) }))
       .filter(x => (x.p && x.p <= ate && !(c === 'Hoje' && feitas.includes(x.m))) || (c === 'Hoje' && x.m.estado === 'parada' && x.m.freq))
       .filter(x => match('rota', { ...x.m, ...(x.e || {}), numero: x.m.numero }, ['numero', 'nome', 'localidade', 'morada']));
-    const zona = x => x.e?.zona || x.e?.localidade || 'Sem zona';
-    L.sort((a, b) => zona(a).localeCompare(zona(b), 'pt') || ((a.m.ordem ?? 9e9) - (b.m.ordem ?? 9e9)) || String(a.p || '').localeCompare(String(b.p || '')) || (parseInt(a.m.numero) || 0) - (parseInt(b.m.numero) || 0));
+    const diaV = c === 'Hoje' || c === 'Amanhã', dia = c === 'Hoje' ? TODAY() : addD(TODAY(), 1);
+    const zona = x => diaV ? 'Volta de ' + DIA_N[wd(dia)] : (x.e?.zona || x.e?.localidade || 'Sem zona');
+    if (diaV) L.sort((a, b) => ((a.m.ordem ?? 9e9) - (b.m.ordem ?? 9e9)) || (parseInt(a.m.numero) || 0) - (parseInt(b.m.numero) || 0)); else L.sort((a, b) => zona(a).localeCompare(zona(b), 'pt') || ((a.m.ordem ?? 9e9) - (b.m.ordem ?? 9e9)) || String(a.p || '').localeCompare(String(b.p || '')) || (parseInt(a.m.numero) || 0) - (parseInt(b.m.numero) || 0));
     const grupos = new Map(); L.forEach(x => { const z = zona(x); if (!grupos.has(z)) grupos.set(z, []); grupos.get(z).push(x); });
     const semRota = ativas.filter(m => !m.freq).length;
     const top = `<div class="tb"><div class="tbr"><label class="srch">${ic('search', 18)}<input id="q-rota" data-q="rota" type="search" placeholder="Máquina, cliente ou localidade" value="${esc(S.q.rota || '')}" autocomplete="off"></label></div>
@@ -594,7 +596,16 @@ window.MAQ_INIT = function () {
     const row = x => { const n = x.p ? difD(x.p, TODAY()) : 0; return `<div class="row" role="button" data-act="maqOpen" data-id="${x.m.id}"><span class="av k">${esc(x.m.numero)}</span><span class="rt"><span class="r1">${esc(x.e?.nome || 'Cliente')}${x.m.sitio ? ' · ' + esc(x.m.sitio) : ''}</span><span class="r2">${esc([moradaE(x.e) || x.e?.localidade, x.m.freq ? FREQ[x.m.freq] : ''].filter(Boolean).join(' · '))}</span></span><span class="rr">${pecaB(x.m.id)}${x.m.estado === 'parada' ? badge('Parada', 'bad') : n < 0 ? badge(`Atrasada ${-n} d`, 'bad') : (n > 0 || c !== 'Hoje') ? `<span class="note">${esc(fDia(x.p))}</span>` : ''}<a class="btn sm" href="${esc(mapaU(x.e, x.m))}" target="_blank" rel="noopener" data-act="link">Mapa</a></span></div>`; };
     const rotaU = xs => { const pts = [...new Set(xs.map(x => temGeo(x.m) ? geoTxt(x.m) : (moradaE(x.e) || x.e?.nome)).filter(Boolean))].slice(0, 10); if (!pts.length) return ''; return 'https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=' + encodeURIComponent(pts[pts.length - 1]) + (pts.length > 1 ? '&waypoints=' + encodeURIComponent(pts.slice(0, -1).join('|')) : ''); };
     const blocos = [...grupos.entries()].map(([z, xs]) => `<div class="panel" style="margin-bottom:14px"><div class="ph"><h2>${esc(z)}</h2><span class="grow"></span>${rotaU(xs) ? `<a class="btn sm" href="${esc(rotaU(xs))}" target="_blank" rel="noopener">${ic('pin', 16)}Rota no mapa</a>` : ''}</div>${xs.map(row).join('')}</div>`).join('');
-    return `<div class="pg">${top}${sum}${blocos || `<div class="panel empty"><b>${c === 'Hoje' ? 'Nada para abastecer hoje' : 'Nada previsto'}</b>${D('maquinas').some(m => m.freq) ? 'Veja os próximos dias.' : 'Defina a frequência de abastecimento em cada máquina (Editar ou Mover).'}</div>`}</div>`;
+    /* entregas e carga da carrinha no dia (Hoje / Amanhã) */
+    let entH = '';
+    if (diaV) {
+      const E = D('encomendas').filter(x => encAberta(x) && x.entrega === dia).sort((a, b) => String(ent(a.entidade)?.localidade || '').localeCompare(String(ent(b.entidade)?.localidade || ''), 'pt'));
+      const cg = cargaDia(dia), over = cg.g > BERLINGO.garrafoes || cg.kg > BERLINGO.kg;
+      entH = `<div class="panel" style="margin-bottom:14px"><div class="ph"><h2>Entregas</h2><span class="note">${E.length} encomenda${E.length === 1 ? '' : 's'} · ${cg.g} garrafões · ${Math.round(cg.kg)} kg</span></div>
+        ${over ? `<p class="note" style="margin:0 16px 8px;color:var(--bad);font-weight:500">Passa o limite da Berlingo (${BERLINGO.garrafoes} garrafões / ${BERLINGO.kg} kg): passar entregas para o outro dia da zona ou levar a Iveco (Hospital logo de manhã).</p>` : ''}
+        ${E.map(x => { const e = ent(x.entidade), c = cargaLinhas(x.linhas); return `<div class="row" role="button" tabindex="0" data-act="open" data-col="encomendas" data-id="${x.id}"><span class="rt"><span class="r1">${esc(entName(x.entidade))}</span><span class="r2">${esc([e?.semNif ? 'SEM NIF' : '', e?.localidade, (x.linhas || []).map(l => (+l.qt || 0) + '× ' + String(l.nome || '').replace(/ \([^)]*\)$/, '')).join(', ')].filter(Boolean).join(' · '))}</span></span><span class="rr">${c.g ? badge(c.g + ' garr.', 'mute') : ''}</span></div>`; }).join('') || '<div class="empty"><b>Sem entregas marcadas</b>As encomendas com entrega neste dia aparecem aqui.</div>'}</div>`;
+    }
+    return `<div class="pg">${top}${sum}${entH}${blocos || `<div class="panel empty"><b>${c === 'Hoje' ? 'Nada para abastecer hoje' : 'Nada previsto'}</b>${D('maquinas').some(m => m.freq) ? 'Veja os próximos dias.' : 'Defina a frequência de abastecimento em cada máquina (Editar ou Mover).'}</div>`}</div>`;
   });
 
   /* ---------- mapa das máquinas ---------- */

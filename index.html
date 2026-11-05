@@ -933,9 +933,30 @@ function openForm(col,id,preset){
  openSheet(`<div class="sh"><h2>${esc(t)}</h2><button class="ib" data-act="close" aria-label="Fechar">${ic('x')}</button></div><div class="sb">${body}</div>
  <div class="sf">${ex&&!ro?`<button class="btn dng" data-act="del" type="button">Apagar</button>`:''}${ex&&col==='pagamentos'&&!ro?`<button class="btn" data-act="pagEmail" data-id="${ex.id}" type="button">${ex.emailEnviado?'Reenviar email':'Enviar email ao cliente'}</button>`:''}${ex&&col==='propostas'&&!ro?`<button class="btn" data-act="prop2enc" type="button">Converter em encomenda</button>`:''}${ex&&(col==='encomendas'||col==='propostas')?`<button class="btn" data-act="copydoc" type="button">${ic('copy',16)}Copiar texto</button>`:''}${ex&&col==='pedidos'?`<a class="btn" data-act="mailgo" href="${esc(pedMail(ex))}">${ic('mail',16)}Enviar email</a>`:''}${ex&&col==='pedidos'&&!ro&&ex.estado!=='Concluído'?`<button class="btn gold" data-act="pedOk" type="button">Marcar como concluído</button>`:''}${ex&&col==='avencas'&&!ro&&ex.xdEstado==='por_criar'?`<button class="btn" data-act="avXd" type="button">Enviar pedido ao XD</button><button class="btn" data-act="avXdOk" type="button">Já está criada no XD</button>`:''}${ex&&col==='encomendas'&&!ro&&encAberta(ex)?`<button class="btn gold" data-act="encEntregue" type="button">Marcar como entregue</button>`:''}${ex&&col==='encomendas'&&!ro?`<button class="btn" data-act="repEnc2" type="button">Repetir encomenda</button>`:''}${ex&&col==='encomendas'&&!CFG.emailEncomendas?`<a class="btn" data-act="mailgo" href="${esc(encMail(ex).href)}">${ic("mail",16)}Enviar email</a>`:''}${ex&&col==='encomendas'&&!ro&&CFG.emailEncomendas?`<button class="btn" data-act="encEmail" type="button">Enviar email</button>`:''}<span class="grow"></span><button class="btn" data-act="close" type="button">Cancelar</button>${ro?'':`<button class="btn pri" data-act="saveform" type="button">Guardar</button>`}</div>`);
  if(['encomendas','pedidos','propostas'].includes(col))avisoNif();
+ if(col==='encomendas'){avisoRota();$('#f-entrega')?.addEventListener('change',avisoRota)}
  setTimeout(()=>{const f=$('#sheetc input:not([type=hidden]),#sheetc select');if(f&&!ex&&innerWidth>760)f.focus()},50);
 }
 /* aviso no formulário: cliente que pediu para ser faturado como consumidor final (sem número de contribuinte) */
+/* ---- rotas: dia da zona e carga da Berlingo ---- */
+const ZONA_DIAS={fafe:[1,5],fora:[3],porto:[3]},ZONA_NOME={fafe:'Fafe (segunda e sexta)',fora:'Fora (quarta)',porto:'Porto (uma quarta por mês)'},DIA_N=['domingo','segunda','terça','quarta','quinta','sexta','sábado'];
+const BERLINGO={kg:800,garrafoes:45};
+const wdI=iso=>new Date(iso+'T12:00').getDay();
+function proxDiaZona(eid,de){const z=ent(eid)?.saida,ds=ZONA_DIAS[z];if(!ds)return '';let d=addDays(de||TODAY(),1);for(let i=0;i<14;i++){if(ds.includes(wdI(d)))return d;d=addDays(d,1)}return ''}
+const pesoArt=a=>{if(!a)return 0;if(+a.pesoKg>0)return +a.pesoKg;const n=String(a.nome||'').toUpperCase();let m=n.match(/(\d+(?:[.,]\d+)?)\s*KG\b/);if(m)return +m[1].replace(',','.');m=n.match(/(\d+)\s*GR?\b/);return m&&+m[1]>=100?+m[1]/1000:0};
+const isGarrafao=a=>!!a&&(a.ref==='0201'||/GARRAF[ÃA]O/i.test(a.nome||''));
+function cargaLinhas(L){let kg=0,g=0;(L||[]).forEach(l=>{const a=l.artigo?S.data.artigos.get(l.artigo):null,q=+l.qt||0;kg+=pesoArt(a)*q;if(isGarrafao(a))g+=q});return{kg,g}}
+function cargaDia(ds,excl){let kg=0,g=0,n=0;D('encomendas').filter(x=>x.id!==excl&&encAberta(x)&&x.entrega===ds).forEach(x=>{const c=cargaLinhas(x.linhas);kg+=c.kg;g+=c.g;n++});return{kg,g,n}}
+/* aviso na encomenda: dia da zona do cliente, urgência fora do dia e carga da carrinha nesse dia */
+function avisoRota(){const fe=$('#frm [data-k="entrega"]');if(!fe||S.form?.col!=='encomendas')return;const eid=$('#f-entidade')?.value,inp=$('#f-entrega');let el=$('#aviso-rota');if(!el){fe.insertAdjacentHTML('beforeend','<p id="aviso-rota" class="note" style="margin:6px 0 0"></p>');el=$('#aviso-rota')}
+ const e=ent(eid),z=e?.saida;if(!eid){el.innerHTML='';return}
+ if(!ZONA_DIAS[z]){el.innerHTML='Cliente sem dia de rota (falta a localidade ou é envio).';return}
+ if(inp&&!inp.value&&!S.form.id){const d=proxDiaZona(eid);if(d)inp.value=d}
+ const ds=inp?.value;if(!ds){el.innerHTML='Dia da zona: <b>'+ZONA_NOME[z]+'</b>.';return}
+ const ok=ZONA_DIAS[z].includes(wdI(ds)),c=cargaDia(ds,S.form.id),me=cargaLinhas(S.form.linhas),kg=c.kg+me.kg,g=c.g+me.g;
+ let h=ok?`Dia da zona: ${ZONA_NOME[z]} · ${DIA_N[wdI(ds)]} ${fD(ds)}.`:`<span style="color:var(--bad);font-weight:500">Urgência: fora do dia da zona, ${ZONA_NOME[z]}. Aplicar taxa de urgência.</span> Próximo dia da zona: ${fD(proxDiaZona(eid))}.`;
+ h+=`<br>Carga nesse dia: <b>${g}</b> garrafões · <b>${Math.round(kg)}</b> kg (Berlingo: até ${BERLINGO.garrafoes} garrafões / ${BERLINGO.kg} kg).`;
+ if(g>BERLINGO.garrafoes||kg>BERLINGO.kg)h+=` <span style="color:var(--bad);font-weight:500">Passa o limite da Berlingo: passe a entrega para o outro dia da zona ou leve a Iveco.</span>`;
+ el.innerHTML=h}
 function avisoNif(){const fe=$('#frm [data-k="entidade"]');if(!fe)return;let el=$('#aviso-nif');const on=!!ent($('#f-entidade')?.value)?.semNif;
  if(!on){if(el)el.remove();return}
  if(!el)fe.insertAdjacentHTML('beforeend','<p id="aviso-nif" class="note" style="margin:8px 0 0;color:var(--warn,#B26B00);font-weight:500">Este cliente é consumidor final: faturar sem número de contribuinte.</p>')}
@@ -976,7 +997,7 @@ function histH(){const eid=($('#f-entidade')?.value)||S.form?.ent0||'';if(!eid)r
  const ro=!S.canWrite;
  return `<div class="hist"><div class="hist-h">Últimas encomendas de ${esc(entName(eid))}</div>${L.length?L.map(x=>`<div class="hist-i"><div class="hist-t"><b>${fDY(x.data)}</b><span class="note">${esc(x.estado||'Nova')} · ${eur(docTotal(x))}</span>${ro?'':`<button type="button" class="btn sm" data-act="repEnc" data-id="${x.id}">Repetir</button>`}</div><ul>${(x.linhas||[]).map(l=>`<li>${esc(l.qt)} × ${esc(l.nome)} <span class="num">${eur(l.preco)}${+l.desc?` (−${esc(l.desc)}%)`:''}</span></li>`).join('')||'<li class="note">Sem artigos</li>'}</ul></div>`).join(''):'<p class="note">Ainda não há encomendas deste cliente no CRM.</p>'}</div>`}
 function redrawHist(){const el=$('#enc-hist');if(el)el.innerHTML=histH()}
-function redrawLinhas(){const el=$('#linhas');if(el)el.innerHTML=linhasH()}
+function redrawLinhas(){const el=$('#linhas');if(el)el.innerHTML=linhasH();if(S.form?.col==='encomendas')avisoRota()}
 function addLinha(a){S.form.linhas.push(a?{artigo:a.id,nome:a.nome+(a.ref?' ('+a.ref+')':''),qt:1,preco:+a.preco||0,desc:0,iva:String(a.iva??'23')}:{nome:'',qt:1,preco:0,desc:0,iva:'23'});redrawLinhas();const ins=document.querySelectorAll('.ln-n');const last=ins[ins.length-1];if(last&&!a)last.focus()}
 
 /* --- pickers --- */
@@ -1093,7 +1114,7 @@ const ACT={
  mon:d=>{S.cal.month=addMonths(S.cal.month+'-01',+d.d).slice(0,7);render()},
  hoje:()=>{S.cal.month=TODAY().slice(0,7);S.cal.day=TODAY();render()},
  quem:d=>{S.cal.quem=d.c;render()},
- pick:d=>{$('#f-'+d.k).value=d.id;$('#f-'+d.k+'-q').value=entName(d.id);$('#pk-'+d.k).hidden=true;if(d.k==='entidade'){redrawHist();avisoNif()}},
+ pick:d=>{$('#f-'+d.k).value=d.id;$('#f-'+d.k+'-q').value=entName(d.id);$('#pk-'+d.k).hidden=true;if(d.k==='entidade'){redrawHist();avisoNif();avisoRota()}},
  repEnc:d=>{const x=S.data.encomendas.get(d.id);if(!x||!S.form)return;S.form.linhas=clone(x.linhas||[]);redrawLinhas();toast('Artigos copiados da encomenda de '+fDY(x.data))},
  encEntregue:async(d,b)=>{b.disabled=true;const ok=await patch('encomendas',S.form.id,{estado:'Entregue',entrega:TODAY(),entregue:true});b.disabled=false;if(ok){closeSheet();toast('Encomenda marcada como entregue')}},
  repEnc2:()=>{const x=S.data.encomendas.get(S.form.id);if(!x)return;closeSheet();openForm('encomendas',null,{entidade:x.entidade,linhas:clone(x.linhas||[]),estado:'Nova'})},
