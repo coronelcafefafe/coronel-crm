@@ -940,7 +940,7 @@ function openForm(col,id,preset){
 }
 /* aviso no formulário: cliente que pediu para ser faturado como consumidor final (sem número de contribuinte) */
 /* ---- rotas: dia da zona e carga da Berlingo ---- */
-const ZONA_DIAS={fafe:[1,5],fora:[3],porto:[3]},ZONA_NOME={fafe:'Fafe (segunda e sexta)',fora:'Fora (quarta)',porto:'Porto (uma quarta por mês)'},DIA_N=['domingo','segunda','terça','quarta','quinta','sexta','sábado'];
+const ZONA_DIAS={fafe:[3,5],fora:[1],porto:[1]},ZONA_NOME={fafe:'Fafe (quarta e sexta)',fora:'Fora (segunda)',porto:'Porto (uma segunda por mês)'},DIA_N=['domingo','segunda','terça','quarta','quinta','sexta','sábado'];
 const BERLINGO={kg:800,garrafoes:45};
 const wdI=iso=>new Date(iso+'T12:00').getDay();
 function proxDiaZona(eid,de){const z=ent(eid)?.saida,ds=ZONA_DIAS[z];if(!ds)return '';let d=addDays(de||TODAY(),1);for(let i=0;i<14;i++){if(ds.includes(wdI(d)))return d;d=addDays(d,1)}return ''}
