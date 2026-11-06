@@ -116,7 +116,16 @@ window.MAQ_INIT = function () {
   const ultimoAb = id => { let u = null; D('stock_mov').forEach(x => { if (x.maquina === id && x.tipo === 'abastecimento' && x.contaRota !== false && x.data && (!u || x.data > u)) u = x.data; }); return u; };
   function proxima(m) {
     if (!m || !m.freq || !FREQ_D[m.freq] || !m.entidade || m.estado === 'armazem' || m.estado === 'abate') return null;
-    const u = ultimoAb(m.id), dias = (m.dias || []).map(String).filter(x => DIAS[x]), int = FREQ_D[m.freq];
+    const dias = (m.dias || []).map(String).filter(x => DIAS[x]), int = FREQ_D[m.freq];
+    /* regra: visitas fora do dia previsto (manutenções, desenrasques) não mudam o dia da rota —
+       cada abastecimento conta como se tivesse sido feito no último dia previsto antes dele */
+    let u = null;
+    D('stock_mov').forEach(x => {
+      if (x.maquina !== m.id || x.tipo !== 'abastecimento' || x.contaRota === false || !x.data) return;
+      let d = String(x.data).slice(0, 10);
+      if (dias.length) for (let i = 0; i < 7 && !dias.includes(String(wd(d))); i++) d = addD(d, -1);
+      if (!u || d > u) u = d;
+    });
     if (!u) { let d = TODAY(); if (dias.length) for (let i = 0; i < 7 && !dias.includes(String(wd(d))); i++) d = addD(d, 1); return d; }
     let d = addD(u, dias.length ? Math.max(1, int - 3) : int);
     if (dias.length) for (let i = 0; i < 7 && !dias.includes(String(wd(d))); i++) d = addD(d, 1);
