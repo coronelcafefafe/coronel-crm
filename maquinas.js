@@ -608,8 +608,32 @@ window.MAQ_INIT = function () {
     const grupos = new Map(), gDia = new Map(); L.forEach(x => { const z = zona(x); if (!grupos.has(z)) { grupos.set(z, []); gDia.set(z, diaV ? dia : diaDe(x)); } grupos.get(z).push(x); });
     /* encomendas por entregar: em "Próximos 7 dias" entram no dia da entrega (as atrasadas contam para hoje) */
     const entDe = x => x.entrega && x.entrega > TODAY() ? x.entrega : TODAY();
-    const EN = diaV ? [] : D('encomendas').filter(x => encAberta(x) && x.entrega && x.entrega <= ate);
-    EN.forEach(x => { const d = entDe(x), z = lab(d); if (!grupos.has(z)) { grupos.set(z, []); gDia.set(z, d); } });
+    const EN = D('encomendas').filter(x => encAberta(x) && x.entrega && (diaV ? (x.entrega === dia || (c === 'Hoje' && x.entrega < dia)) : x.entrega <= ate)).filter(x => match('rota', ent(x.entidade) || {}, ['nome', 'localidade', 'morada']));
+    const labG = d => diaV ? 'Volta de ' + DIA_N[wd(dia)] : lab(d);
+    EN.forEach(x => { const d = diaV ? dia : entDe(x), z = labG(d); if (!grupos.has(z)) { grupos.set(z, []); gDia.set(z, d); } });
+    /* junta as entregas à volta: cada entrega entra logo a seguir à máquina mais perto (pelas coordenadas do cliente);
+       sem coordenadas, junto a uma máquina da mesma localidade; senão, no início */
+    const ptG = o => temGeo(o) ? [+o.lat, +o.lng] : null;
+    const semAc = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+    const LOCAIS = { 'fafe': [41.4506, -8.1643], 'felgueiras': [41.3644, -8.1979], 'lixa': [41.3355, -8.1505], 'macieira da lixa': [41.3415, -8.1479], 'vizela': [41.3772, -8.3071], 'guimaraes': [41.4425, -8.2918], 'moreira de conegos': [41.3814, -8.3308], 'lousada': [41.2777, -8.2830], 'celorico de basto': [41.3870, -8.0030], 'cabeceiras de basto': [41.5143, -7.9933], 'povoa de lanhoso': [41.5759, -8.2701], 'travassos': [41.4953, -8.1915], 'medelo': [41.4635, -8.1585], 'braga': [41.5454, -8.4265], 'porto': [41.1579, -8.6291] };
+    const ptE = e => ptG(e) || LOCAIS[semAc(e?.localidade)] || null;
+    const ptM = x => ptG(x.m) || ptG(x.e);
+    const dist2 = (a, b) => { const dy = a[0] - b[0], dx = (a[1] - b[1]) * 0.75; return dy * dy + dx * dx; };
+    const juntar = (xs, en) => {
+      const it = xs.map(x => ({ t: 'm', x }));
+      en.forEach(o => {
+        const e = ent(o.entidade), pe = ptE(e), loc = String(e?.localidade || '').trim().toLowerCase();
+        let k = -1, best = Infinity;
+        it.forEach((y, i) => {
+          if (y.t !== 'm') return;
+          if (pe) { const pm = ptM(y.x); if (pm) { const d = dist2(pe, pm); if (d < best) { best = d; k = i; } } }
+          else if (loc && String(y.x.e?.localidade || '').trim().toLowerCase() === loc) k = i;
+        });
+        if (k >= 0) { while (k + 1 < it.length && it[k + 1].t === 'm' && it[k + 1].x.e?.id && it[k + 1].x.e?.id === it[k].x.e?.id) k++; it.splice(k + 1, 0, { t: 'e', x: o }); }
+        else it.unshift({ t: 'e', x: o });
+      });
+      return it;
+    };
     const ordG = [...grupos.keys()].sort((a, b) => String(gDia.get(a)).localeCompare(String(gDia.get(b))));
     const encRowR = x => { const e = ent(x.entidade), cg = cargaLinhas(x.linhas); return `<div class="row" role="button" tabindex="0" data-act="open" data-col="encomendas" data-id="${x.id}"><span class="av k">${ic('box', 16)}</span><span class="rt"><span class="r1">Entrega · ${esc(entName(x.entidade))}</span><span class="r2">${esc([e?.semNif ? 'SEM NIF' : '', e?.localidade, (x.linhas || []).map(l => (+l.qt || 0) + '× ' + String(l.nome || '').replace(/ \([^)]*\)$/, '')).join(', ')].filter(Boolean).join(' · '))}</span></span><span class="rr">${x.entrega < TODAY() ? badge('Atrasada', 'bad') : ''}${cg.g ? badge(cg.g + ' garr.', 'mute') : ''}</span></div>`; };
     const semRota = ativas.filter(m => !m.freq).length;
@@ -617,8 +641,8 @@ window.MAQ_INIT = function () {
       <div class="chips">${chips.map(x => `<button class="chipb ${x === c ? 'on' : ''}" data-act="chip" data-v="rota" data-c="${esc(x)}">${esc(x)}</button>`).join('')}</div></div>`;
     const sum = `<p class="note" style="margin:0 0 10px"><b>${L.length}</b> máquina${L.length === 1 ? '' : 's'} a visitar${EN.length ? ` · <b>${EN.length}</b> entrega${EN.length === 1 ? '' : 's'}` : ''}${c === 'Hoje' ? ` · <b>${feitas.length}</b> já abastecida${feitas.length === 1 ? '' : 's'} hoje` : ''}. Leia o QR e abasteça: a máquina sai da lista.${semRota ? ` ${semRota} máquina${semRota === 1 ? '' : 's'} sem frequência definida não ${semRota === 1 ? 'entra' : 'entram'} na rota.` : ''}</p>`;
     const row = x => { const n = x.p ? difD(x.p, TODAY()) : 0; return `<div class="row" role="button" data-act="maqOpen" data-id="${x.m.id}"><span class="av k">${esc(x.m.numero)}</span><span class="rt"><span class="r1">${esc(x.e?.nome || 'Cliente')}${x.m.sitio ? ' · ' + esc(x.m.sitio) : ''}</span><span class="r2">${esc([moradaE(x.e) || x.e?.localidade, x.m.freq ? FREQ[x.m.freq] : ''].filter(Boolean).join(' · '))}</span></span><span class="rr">${pecaB(x.m.id)}${x.m.estado === 'parada' ? badge('Parada', 'bad') : n < 0 ? badge(`Atrasada ${-n} d`, 'bad') : (n > 0 || c !== 'Hoje') ? `<span class="note">${esc(fDia(x.p))}</span>` : ''}<a class="btn sm" href="${esc(mapaU(x.e, x.m))}" target="_blank" rel="noopener" data-act="link">Mapa</a></span></div>`; };
-    const rotaU = xs => { const pts = [...new Set(xs.map(x => temGeo(x.m) ? geoTxt(x.m) : (moradaE(x.e) || x.e?.nome)).filter(Boolean))].slice(0, 10); if (!pts.length) return ''; return 'https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=' + encodeURIComponent(pts[pts.length - 1]) + (pts.length > 1 ? '&waypoints=' + encodeURIComponent(pts.slice(0, -1).join('|')) : ''); };
-    const blocos = ordG.map(z => { const xs = grupos.get(z), en = EN.filter(x => entDe(x) === gDia.get(z)); return `<div class="panel" style="margin-bottom:14px"><div class="ph"><h2>${esc(z)}</h2><span class="grow"></span>${rotaU(xs) ? `<a class="btn sm" href="${esc(rotaU(xs))}" target="_blank" rel="noopener">${ic('pin', 16)}Rota no mapa</a>` : ''}</div>${en.map(encRowR).join('')}${xs.map(row).join('')}</div>`; }).join('');
+    const rotaU = it => { const pts = [...new Set(it.map(y => { if (y.t === 'e') { const e = ent(y.x.entidade); return temGeo(e) ? geoTxt(e) : (moradaE(e) || e?.nome); } const x = y.x; return temGeo(x.m) ? geoTxt(x.m) : (moradaE(x.e) || x.e?.nome); }).filter(Boolean))].slice(0, 10); if (!pts.length) return ''; return 'https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=' + encodeURIComponent(pts[pts.length - 1]) + (pts.length > 1 ? '&waypoints=' + encodeURIComponent(pts.slice(0, -1).join('|')) : ''); };
+    const blocos = ordG.map(z => { const xs = grupos.get(z), en = EN.filter(x => (diaV ? dia : entDe(x)) === gDia.get(z)), it = juntar(xs, en), u = rotaU(it); return `<div class="panel" style="margin-bottom:14px"><div class="ph"><h2>${esc(z)}</h2><span class="grow"></span>${u ? `<a class="btn sm" href="${esc(u)}" target="_blank" rel="noopener">${ic('pin', 16)}Rota no mapa</a>` : ''}</div>${it.map(y => y.t === 'e' ? encRowR(y.x) : row(y.x)).join('')}</div>`; }).join('');
     /* entregas e carga da carrinha no dia (Hoje / Amanhã) */
     let entH = '';
     if (diaV) {
@@ -626,7 +650,7 @@ window.MAQ_INIT = function () {
       const cg = cargaDia(dia), over = cg.g > BERLINGO.garrafoes || cg.kg > BERLINGO.kg;
       entH = `<div class="panel" style="margin-bottom:14px"><div class="ph"><h2>Entregas</h2><span class="note">${E.length} encomenda${E.length === 1 ? '' : 's'} · ${cg.g} garrafões · ${Math.round(cg.kg)} kg</span></div>
         ${over ? `<p class="note" style="margin:0 16px 8px;color:var(--bad);font-weight:500">Passa o limite da Berlingo (${BERLINGO.garrafoes} garrafões / ${BERLINGO.kg} kg): passar entregas para o outro dia da zona ou levar a Iveco (Hospital logo de manhã).</p>` : ''}
-        ${E.map(x => { const e = ent(x.entidade), c = cargaLinhas(x.linhas); return `<div class="row" role="button" tabindex="0" data-act="open" data-col="encomendas" data-id="${x.id}"><span class="rt"><span class="r1">${esc(entName(x.entidade))}</span><span class="r2">${esc([e?.semNif ? 'SEM NIF' : '', e?.localidade, (x.linhas || []).map(l => (+l.qt || 0) + '× ' + String(l.nome || '').replace(/ \([^)]*\)$/, '')).join(', ')].filter(Boolean).join(' · '))}</span></span><span class="rr">${c.g ? badge(c.g + ' garr.', 'mute') : ''}</span></div>`; }).join('') || '<div class="empty"><b>Sem entregas marcadas</b>As encomendas com entrega neste dia aparecem aqui.</div>'}</div>`;
+        ${E.length ? '<p class="note" style="margin:0 16px 10px">As entregas estão na volta, junto às máquinas mais perto.</p>' : '<div class="empty"><b>Sem entregas marcadas</b>As encomendas com entrega neste dia aparecem na volta.</div>'}</div>`;
     }
     return `<div class="pg">${top}${sum}${entH}${blocos || `<div class="panel empty"><b>${c === 'Hoje' ? 'Nada para abastecer hoje' : 'Nada previsto'}</b>${D('maquinas').some(m => m.freq) ? 'Veja os próximos dias.' : 'Defina a frequência de abastecimento em cada máquina (Editar ou Mover).'}</div>`}</div>`;
   });
