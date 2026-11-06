@@ -448,6 +448,7 @@ const F={
  ],
  encomendas:[
   {k:'entidade',l:'Cliente',t:'ent',req:1,full:1},
+  {k:'local',l:'Ponto de entrega',t:'local',full:1},
   {k:'data',l:'Data',t:'date',def:'@today'},
   {k:'estado',l:'Estado',t:'sel',o:EST_ENC,req:1,def:'Nova'},
   {k:'entrega',l:'Entrega prevista',t:'date'},
@@ -912,6 +913,7 @@ function fieldH(f,v){
   case'bool':return `<div class="fld${f.full?' full':''}"><label class="tog"><input id="${id}" type="checkbox" ${v?'checked':''}><span>${esc(f.l)}</span></label></div>`;
   case'user':{const ids=teamIds();i=`<select id="${id}"><option value="">—</option>${ids.map(u=>`<option value="${esc(u)}" ${v===u?'selected':''}>${esc(nameOf(u))}${u===S.uid?' (eu)':''}</option>`).join('')}</select>`;break}
   case'ent':i=`<div class="pick"><input id="${id}-q" class="inp" data-pick="${f.k}" value="${esc(v?entName(v):'')}" placeholder="Procurar cliente pelo nome" autocomplete="off"><input type="hidden" id="${id}" value="${esc(v||'')}"><div class="pkl" id="pk-${f.k}" hidden></div></div>`;break;
+  case'local':i=`<select id="${id}" data-v="${esc(v||'')}"><option value="">—</option></select>`;break;
   case'linhas':i=`<div id="linhas">${linhasH()}</div>${['encomendas','propostas'].includes(S.form?.col)?`<div id="enc-hist">${histH()}</div>`:''}`;break;
   case'pdf':i=`<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><input type="hidden" id="${id}" value="${esc(v||'')}"><span id="pdfnome" class="note" style="margin:0">${v?esc(pdfNome(v)):'Sem PDF'}</span><button class="btn sm" data-act="pdfVer" data-p="${esc(v||'')}" id="pdfver" ${v?'':'hidden'}>${ic('doc',16)}Abrir</button>${S.canWrite?`<label class="btn sm">${v?'Trocar PDF':'Carregar PDF'}<input type="file" accept="application/pdf" data-pdf="1" hidden></label>`:''}</div>`;break;
   case'foto':i=`<div style="display:flex;gap:12px;align-items:center"><div class="ph-img" style="width:96px;border-radius:10px;overflow:hidden" id="fotoprev">${v?`<img src="${esc(fotoUrl(v))}" alt="">`:'—'}</div><input type="hidden" id="${id}" value="${esc(v||'')}">${S.assets?`<label class="btn sm">Escolher fotografia<input type="file" accept="image/png,image/jpeg,image/webp" data-foto="1" hidden></label>`:'<span class="note">Só quem pode editar o CRM consegue carregar fotografias.</span>'}</div>`;break;
@@ -948,6 +950,7 @@ function cargaLinhas(L){let kg=0,g=0;(L||[]).forEach(l=>{const a=l.artigo?S.data
 function cargaDia(ds,excl){let kg=0,g=0,n=0;D('encomendas').filter(x=>x.id!==excl&&encAberta(x)&&x.entrega===ds).forEach(x=>{const c=cargaLinhas(x.linhas);kg+=c.kg;g+=c.g;n++});return{kg,g,n}}
 /* aviso na encomenda: dia da zona do cliente, urgência fora do dia e carga da carrinha nesse dia */
 function avisoRota(){const fe=$('#frm [data-k="entrega"]');if(!fe||S.form?.col!=='encomendas')return;const eid=$('#f-entidade')?.value,inp=$('#f-entrega');let el=$('#aviso-rota');if(!el){fe.insertAdjacentHTML('beforeend','<p id="aviso-rota" class="note" style="margin:6px 0 0"></p>');el=$('#aviso-rota')}
+ {const sl=$('#f-local');if(sl){const LL=S.data.entrega_locais?D('entrega_locais').filter(l=>l.entidade===eid&&l.ativo!==false):[];const cur=sl.value||sl.dataset.v||'';sl.innerHTML='<option value="">Morada do cliente</option>'+LL.map(l=>`<option value="${esc(l.id)}" ${l.id===cur?'selected':''}>${esc(l.nome)}</option>`).join('');const w=sl.closest('.fld');if(w)w.hidden=!LL.length}}
  const e=ent(eid),z=e?.saida;if(!eid){el.innerHTML='';return}
  if(!ZONA_DIAS[z]){el.innerHTML='Cliente sem dia de rota (falta a localidade ou é envio).';return}
  if(inp&&!inp.value&&!S.form.id){const d=proxDiaZona(eid);if(d)inp.value=d}
@@ -1324,6 +1327,7 @@ async function start(session){
  await loadTeam();
  await Promise.all(COLS.map(c=>loadTable(c).catch(e=>{console.warn(c,e);S.ready[c]=true})));
  loadTable('xd_documentos').catch(e=>console.warn('xd',e));
+ loadTable('entrega_locais').catch(e=>console.warn('locais',e));
  S.db.channel('crm').on('postgres_changes',{event:'*',schema:'public'},p=>{const col=p.table;if(col==='membros'){loadTeam();return}if(!S.data[col])return;if(p.eventType==='DELETE'){if(p.old?.id)S.data[col].delete(p.old.id)}else{const o=fromRow(p.new);S.data[col].set(o.id,o)}schedule()}).subscribe();
  S.sample=CFG.claude===false?null:makeSample();S.assets=S.canWrite?{upload:uploadFoto}:null;schedule();
 }
