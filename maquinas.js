@@ -113,7 +113,7 @@ window.MAQ_INIT = function () {
   const addD = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
   const difD = (a, b) => Math.round((new Date(a + 'T12:00:00') - new Date(b + 'T12:00:00')) / 864e5);
   const wd = iso => new Date(iso + 'T12:00:00').getDay();
-  const ultimoAb = id => { let u = null; D('stock_mov').forEach(x => { if (x.maquina === id && x.tipo === 'abastecimento' && x.data && (!u || x.data > u)) u = x.data; }); return u; };
+  const ultimoAb = id => { let u = null; D('stock_mov').forEach(x => { if (x.maquina === id && x.tipo === 'abastecimento' && x.contaRota !== false && x.data && (!u || x.data > u)) u = x.data; }); return u; };
   function proxima(m) {
     if (!m || !m.freq || !FREQ_D[m.freq] || !m.entidade || m.estado === 'armazem' || m.estado === 'abate') return null;
     const u = ultimoAb(m.id), dias = (m.dias || []).map(String).filter(x => DIAS[x]), int = FREQ_D[m.freq];
