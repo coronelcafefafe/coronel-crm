@@ -691,6 +691,8 @@ window.MAQ_INIT = function () {
       s.xd += (+l.qt || 0) * (doc.tipo === 'NC' ? -1 : 1);
     }));
     M0.forEach(s => { s.atual = s.ini + s.ent + s.ace + s.ret - s.maq - s.pec - s.xd; });
+    /* stock do XD (sincronizado a cada 10 min): quando existe, é o que conta */
+    D('artigos').forEach(a => { if (a.stockXd == null || a.stockXd === '' || a.oculto) return; const s = g(a.id); s.xdStock = +a.stockXd; s.atual = s.xdStock; });
     return M0;
   }
   VIEWS.stock = () => loadingOr(() => {
@@ -703,8 +705,8 @@ window.MAQ_INIT = function () {
     const top = `<div class="tb"><div class="tbr"><label class="srch">${ic('search', 18)}<input id="q-stock" data-q="stock" type="search" placeholder="Pesquisar artigo" value="${esc(S.q.stock || '')}" autocomplete="off"></label>
       ${S.canWrite ? `<button class="btn pri" data-act="stockCart" data-c="entrada">${ic('plus', 18)}<span>Entrada</span></button><button class="btn" data-act="stockCart" data-c="inicial">Stock inicial</button><button class="btn" data-act="stockCart" data-c="acerto">Acerto</button>` : ''}</div>
       <div class="chips">${chips.map(x => `<button class="chipb ${x === c ? 'on' : ''}" data-act="chip" data-v="stock" data-c="${esc(x)}">${esc(x)}</button>`).join('')}</div></div>`;
-    const sum = `<p class="note" style="margin:0 0 10px"><b>${SM.size}</b> artigo${SM.size === 1 ? '' : 's'} com movimentos · valor em stock <b>${eur(val)}</b> (preço de custo). Stock = inicial + entradas ± acertos − abastecimentos e peças das máquinas − vendas faturadas no XD desde o stock inicial.</p>`;
-    const row = x => rowH({ act: 'open', col: 'artigos', id: x.a.id, title: x.a.nome, sub: `${x.a.ref ? x.a.ref + ' · ' : ''}inicial ${x.s.ini} · entradas ${x.s.ent + x.s.ace} · máquinas ${qTxt(x.s.maq - x.s.ret)} · peças ${x.s.pec} · vendas XD ${x.s.xd}`, right: String(Math.round(x.s.atual * 100) / 100), badges: x.s.atual < 0 ? badge('Negativo', 'bad') : '' });
+    const sum = `<p class="note" style="margin:0 0 10px"><b>${SM.size}</b> artigo${SM.size === 1 ? '' : 's'}${S.verValores ? ` · valor em stock <b>${eur(val)}</b> (preço de custo)` : ''}. O stock vem do XD e atualiza a cada 10 minutos; entradas, acertos e contagens fazem-se no XD.</p>`;
+    const row = x => rowH({ act: 'open', col: 'artigos', id: x.a.id, title: x.a.nome, sub: x.s.xdStock != null ? `${x.a.ref ? x.a.ref + ' · ' : ''}stock do XD${x.s.maq ? ' · abastecido nas máquinas ' + qTxt(x.s.maq - x.s.ret) : ''}` : `${x.a.ref ? x.a.ref + ' · ' : ''}inicial ${x.s.ini} · entradas ${x.s.ent + x.s.ace} · máquinas ${qTxt(x.s.maq - x.s.ret)} · peças ${x.s.pec} · vendas XD ${x.s.xd}`, right: String(Math.round(x.s.atual * 100) / 100), badges: x.s.atual < 0 ? badge('Negativo', 'bad') : '' });
     return `<div class="pg">${top}${sum}${listBlock('stock', L, row, SM.size ? '<b>Nenhum artigo neste filtro</b>Veja "Todos".' : '<b>Sem movimentos de stock</b>Comece por "Stock inicial": conte o armazém e registe as quantidades.')}</div>`;
   });
 
