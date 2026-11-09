@@ -65,7 +65,7 @@ window.MAQ_INIT = function () {
 .mq-pm button+button{border-left:1px solid var(--line)}
 .mq-bar{position:sticky;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:10px 0 0;margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .mq-bar .note{flex:1 1 100%}@media(min-width:560px){.mq-bar .note{flex:1 1 auto}}
-.mq-sw{display:flex;gap:6px;margin:0 0 10px}.mq-tl .row{cursor:default}.mq-tl .row[role=button]{cursor:pointer}.mq-tl .row[data-act=maqMovVer] .r1::after{content:' ›';color:var(--ink-3)}
+.mq-sw{display:flex;gap:6px;margin:0 0 10px}.mq-tl .row{cursor:default}.mq-tl .row[role=button]{cursor:pointer}.mq-tl .row[data-act=maqMovVer] .r1::after,.mq-tl .row[data-act=maqAssistVer] .r1::after{content:' ›';color:var(--ink-3)}
 .pg a.btn{text-decoration:none;color:inherit}
 .pg button.lnk{background:none;border:0;padding:0;font:inherit;font-size:14px;color:#6E6E73;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
 .mq-big{font-family:'Cormorant Garamond',serif;font-size:40px;line-height:1}
@@ -316,14 +316,14 @@ window.MAQ_INIT = function () {
     });
     D('maq_assist').filter(a => a.maquina === m.id && a.estado === 'fechada').forEach(a => {
       const c = D('stock_mov').filter(x => x.assist === a.id).reduce((s, x) => s + (x.custo != null ? +x.custo * +x.qt : 0), 0);
-      ev.push({ q: a.fim || a.criado, t: 'Assistência' + (a.minutos ? ` · ${a.minutos} min` : '') + (a.contador != null ? ` · aos ${nF(a.contador)} serviços` : '') + (a.preventiva ? ' · preventiva' : ''), s: [a.avaria, a.solucao].filter(Boolean).join(' → ') || '—', r: S.verValores && c ? eur(c) : '', por: a.criadoPor });
+      ev.push({ q: a.fim || a.criado, t: 'Assistência' + (a.minutos ? ` · ${a.minutos} min` : '') + (a.contador != null ? ` · aos ${nF(a.contador)} serviços` : '') + (a.preventiva ? ' · preventiva' : ''), s: [a.avaria, a.solucao].filter(Boolean).join(' → ') || 'Sem descrição', r: S.verValores && c ? eur(c) : '', por: a.criadoPor, as: a.id });
     });
     D('maq_troco').filter(t => t.maquina === m.id).forEach(t => ev.push({ q: t.criado || t.data, t: t.tipo === 'retirar' ? 'Troco retirado do moedeiro' : 'Troco metido no moedeiro', s: t.notas || 'Moedas da empresa', r: (t.tipo === 'retirar' ? '−' : '') + eur(t.valor), por: t.criadoPor }));
     D('maq_local').filter(l => l.maquina === m.id).forEach(l => ev.push({ q: l.criado, t: 'Mudança de local', s: (l.entidade ? entName(l.entidade) : 'Armazém') + (l.notas ? ' · ' + l.notas : ''), r: '', por: l.criadoPor }));
     if (S.verValores) D('maq_fat').filter(f => f.maquina === m.id).forEach(f => ev.push({ q: f.data + 'T23:59', t: 'Faturação', s: f.notas || (f.entidade ? entName(f.entidade) : ''), r: eur(f.valor), por: f.criadoPor, fat: f.id }));
     ev.sort((a, b) => String(b.q).localeCompare(String(a.q)));
     const lim = S.lim.maqtl || 30;
-    return `<div class="panel mq-tl" style="margin-top:14px"><div class="ph"><h2>Histórico</h2></div>${ev.length ? ev.slice(0, lim).map(e => `<div class="row"${e.fat ? ` role="button" data-act="maqFatDel" data-id="${e.fat}" title="Carregue para apagar este registo"` : e.mov ? ` role="button" data-act="maqMovVer" data-id="${e.mov}" title="Ver o que foi carregado"` : ''}><span class="rt"><span class="r1">${esc(e.t)}</span><span class="r2">${esc(e.s)}</span></span><span class="rr"><span class="note">${esc(fD(String(e.q).slice(0, 10)))} · ${esc(nameOf(e.por))}</span>${e.r ? `<span class="num">${esc(e.r)}</span>` : ''}</span></div>`).join('') + (ev.length > lim ? `<button class="more" data-act="more" data-v="maqtl">Mostrar mais (${ev.length - lim})</button>` : '') : '<div class="empty"><b>Sem movimentos</b>Os abastecimentos, assistências e mudanças aparecem aqui.</div>'}</div>`;
+    return `<div class="panel mq-tl" style="margin-top:14px"><div class="ph"><h2>Histórico</h2></div>${ev.length ? ev.slice(0, lim).map(e => `<div class="row"${e.fat ? ` role="button" data-act="maqFatDel" data-id="${e.fat}" title="Carregue para apagar este registo"` : e.as ? ` role="button" data-act="maqAssistVer" data-id="${e.as}" title="Ver a assistência"` : e.mov ? ` role="button" data-act="maqMovVer" data-id="${e.mov}" title="Ver o que foi carregado"` : ''}><span class="rt"><span class="r1">${esc(e.t)}</span><span class="r2">${esc(e.s)}</span></span><span class="rr"><span class="note">${esc(fD(String(e.q).slice(0, 10)))} · ${esc(nameOf(e.por))}</span>${e.r ? `<span class="num">${esc(e.r)}</span>` : ''}</span></div>`).join('') + (ev.length > lim ? `<button class="more" data-act="more" data-v="maqtl">Mostrar mais (${ev.length - lim})</button>` : '') : '<div class="empty"><b>Sem movimentos</b>Os abastecimentos, assistências e mudanças aparecem aqui.</div>'}</div>`;
   }
 
   /* ---------- carrinho (abastecer, retirar, peças, stock) ---------- */
@@ -420,6 +420,27 @@ window.MAQ_INIT = function () {
         <p class="note" style="margin:0 0 10px">${esc(fD(x0.data || String(x0.criado || '').slice(0, 10)))}${hora ? ' às ' + esc(hora) : ''} · ${esc(nameOf(x0.criadoPor))}${m && m.entidade ? ' · ' + esc(entName(m.entidade)) : ''}${lt ? ` · contador ${esc(nF(lt.contador))}` : ''}</p>
         <table class="tt"><thead><tr><th>Produto</th><th class="num">Qt.</th>${S.verValores ? '<th class="num">Custo</th>' : ''}</tr></thead><tbody>${L.map(x => `<tr><td>${esc(nmA(art(x.artigo)) || 'Artigo')}${art(x.artigo)?.ref ? `<div class="note">${esc(art(x.artigo).ref)}</div>` : ''}</td><td class="num">${qTxt(+x.qt)}</td>${S.verValores ? `<td class="num">${x.custo != null ? eur(x.custo * x.qt) : '—'}</td>` : ''}</tr>`).join('')}</tbody>
         ${S.verValores && tot ? `<tfoot><tr><td><b>Total</b></td><td></td><td class="num"><b>${eur(tot)}</b></td></tr></tfoot>` : ''}</table></div>`);
+    },
+    maqAssistVer: d => {
+      const a = S.data.maq_assist.get(d.id); if (!a) return;
+      const m = M(a.maquina), pec = D('stock_mov').filter(x => x.assist === a.id);
+      const hm = v => v ? new Date(v).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' }) : '';
+      const tot = pec.reduce((s, x) => s + (x.custo != null ? +x.custo * +x.qt : 0), 0);
+      const ed = S.canWrite;
+      const campo = (id, k, l, ph) => ed ? `<div class="fld full"><label for="${id}">${l}</label><textarea id="${id}" class="inp" rows="2" placeholder="${ph}">${esc(a[k] || '')}</textarea></div>` : `<div class="fld full"><label>${l}</label><div>${esc(a[k] || '—')}</div></div>`;
+      openSheet(`<div class="sh"><h2>Assistência${m ? ' · máquina ' + esc(m.numero) : ''}</h2><button class="ib" data-act="close" aria-label="Fechar">${ic('x')}</button></div><div class="sb">
+        <p class="note" style="margin:0 0 10px">${esc(fD(a.data || String(a.criado || '').slice(0, 10)))}${a.inicio ? ' · das ' + esc(hm(a.inicio)) + (a.fim ? ' às ' + esc(hm(a.fim)) : '') : ''}${a.minutos ? ' · ' + a.minutos + ' min' : ''} · ${esc(nameOf(a.criadoPor))}${m && m.entidade ? ' · ' + esc(entName(m.entidade)) : ''}</p>
+        <div class="fg">${campo('av-avaria', 'avaria', 'Avaria', 'O que a máquina tinha')}${campo('av-sol', 'solucao', 'O que foi feito', 'Ex.: troca da bomba')}
+        ${semCont(a.maquina) ? '' : (ed ? `<div class="fld"><label for="av-cont">Contador de serviços</label><input id="av-cont" type="number" inputmode="numeric" min="0" class="inp" value="${a.contador ?? ''}"></div>` : `<div class="fld"><label>Contador de serviços</label><div>${a.contador != null ? esc(nF(a.contador)) : '—'}</div></div>`)}
+        <div class="fld"><label>Tipo</label><div>${a.preventiva ? 'Troca preventiva' : 'Avaria'}</div></div></div>
+        <div class="eyebrow" style="margin:14px 0 6px">Peças usadas</div>
+        ${pec.length ? `<table class="tt"><tbody>${pec.map(x => `<tr><td>${esc(nmA(art(x.artigo)) || 'Artigo')}</td><td class="num">${qTxt(+x.qt)}</td>${S.verValores ? `<td class="num">${x.custo != null ? eur(x.custo * x.qt) : '—'}</td>` : ''}</tr>`).join('')}</tbody>${S.verValores && tot ? `<tfoot><tr><td><b>Total</b></td><td></td><td class="num"><b>${eur(tot)}</b></td></tr></tfoot>` : ''}</table>` : '<p class="note" style="margin:0">Sem peças.</p>'}
+        ${ed ? `<div style="display:flex;justify-content:flex-end;margin-top:14px"><button class="btn pri" data-act="maqAssistEd" data-id="${a.id}">Guardar alterações</button></div>` : ''}</div>`);
+    },
+    maqAssistEd: async d => {
+      const c = $('#av-cont'), v = c ? (c.value === '' ? null : Math.max(0, parseInt(c.value) || 0)) : undefined;
+      const ok = await patch('maq_assist', d.id, { avaria: $('#av-avaria')?.value.trim() || null, solucao: $('#av-sol')?.value.trim() || null, ...(c ? { contador: v } : {}) });
+      if (ok) { toast('Assistência guardada'); closeSheet(); }
     },
     mqAdd: d => { const c = S.maqCart; if (!c) return; let v = Math.round(((+c.items[d.id] || 0) + (+d.c) * passoArt(art(d.id))) * 100) / 100; if (v < 0 && c.modo !== 'acerto') v = 0; if (v) c.items[d.id] = v; else delete c.items[d.id]; cartRedraw(); },
     mqSet: d => { const c = S.maqCart; if (!c) return; const v = prompt('Quantidade', String(c.items[d.id] || '')); if (v === null) return; const n = parseFloat(String(v).replace(',', '.')); if (!isFinite(n) || (!n)) delete c.items[d.id]; else c.items[d.id] = c.modo === 'acerto' ? n : Math.abs(n); cartRedraw(); },
