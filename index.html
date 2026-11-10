@@ -1050,6 +1050,14 @@ function linhasH(){
  ${doc?`<div class="chips" style="margin-top:10px"><button type="button" class="chipb ${tab==='cafe'?'on':''}" data-act="lnTab" data-c="cafe">Café e vending</button><button type="button" class="chipb ${tab==='hig'?'on':''}" data-act="lnTab" data-c="hig">Higiene</button></div>`:''}
  ${tab==='hig'?higBoxH():doc?cafeBoxH():`<div class="pick" style="margin-top:8px;display:flex;gap:8px"><div style="flex:1;position:relative"><input class="inp" id="ln-q" data-lnpick="1" placeholder="Adicionar artigo do catálogo" autocomplete="off"><div class="pkl" id="pk-ln" hidden></div></div><button type="button" class="btn" data-act="lnFree">Linha livre</button></div>`}
  <div class="tot num" id="ln-tot">${totH(t)}</div>`}
+/* ao adicionar um artigo, o ecrã não salta: o botão carregado fica no mesmo sítio (lista e folha) */
+function semSalto(act,id,fn){const q=()=>document.querySelector(`#linhas [data-act="${act}"][data-id="${id}"]`);
+ const b=q(),y0=b?b.getBoundingClientRect().top:null,lst=document.querySelector('#cafe-list,#hig-list'),ls=lst?lst.scrollTop:null;
+ fn();
+ const l2=document.querySelector('#cafe-list,#hig-list');if(l2&&ls!=null)l2.scrollTop=ls;
+ const b2=q();if(!b2||y0==null)return;const dy=b2.getBoundingClientRect().top-y0;if(Math.abs(dy)<1)return;
+ let p=l2?l2.parentElement:b2.parentElement;while(p&&p!==document.body){const st=getComputedStyle(p);if(/(auto|scroll)/.test(st.overflowY)&&p.scrollHeight>p.clientHeight)break;p=p.parentElement}
+ (p&&p!==document.body?p:document.scrollingElement).scrollTop+=dy}
 /* catálogo de café e vending dentro da encomenda: habituais do cliente + famílias + pesquisa, em cartões com fotografia */
 const CAFE_FAM=['Café','Água','Vending','Chá e solúveis','Açúcar e acessórios','Papel A4','Equipamentos','Outros'];
 const cafeArts=()=>D('artigos').filter(a=>a.ativo!==false&&!a.oculto&&a.fornecedor!==OXI&&a.familia!=='Peças'&&a.familia!=='Higiene');
@@ -1218,12 +1226,12 @@ const ACT={
  higCat:d=>{S.higCat=d.c||'';redrawLinhas()},
  cafeFam:d=>{S.cafeFam=d.c;S.cafeQ='';S.cafeLim=48;redrawLinhas()},
  cafeMais:()=>{S.cafeLim=(S.cafeLim||48)+48;const cl=$('#cafe-list');if(cl)cl.innerHTML=cafeListH()},
- cafeAdd:d=>{const a=S.data.artigos.get(d.id);if(!a||!S.form)return;const l=S.form.linhas.find(x=>x.artigo===a.id);if(l){l.qt=(+l.qt||0)+1;redrawLinhas()}else addLinha(a)},
+ cafeAdd:d=>{const a=S.data.artigos.get(d.id);if(!a||!S.form)return;semSalto('cafeAdd',a.id,()=>{const l=S.form.linhas.find(x=>x.artigo===a.id);if(l){l.qt=(+l.qt||0)+1;redrawLinhas()}else addLinha(a)})},
  comMes:d=>{S.f.comMes=d.c;render()},
  comReg:async d=>{const k=d.c,c=(S.comissoes||[]).find(c=>String(c.mes).slice(0,7)===k&&c.fornecedor===OXI);const v=prompt(`Comissão comunicada pela Oxigénio para ${mesNome(k)} (€)`,c?.comunicado!=null?String(c.comunicado).replace('.',','):'');if(v===null)return;
   const n=v.trim()===''?null:parseFloat(v.replace(/\s/g,'').replace(',','.'));if(v.trim()!==''&&!isFinite(n))return toast('Valor inválido');
   const{error}=await S.db.from('comissoes').upsert({mes:k+'-01',fornecedor:OXI,comunicado:n,atualizado:new Date().toISOString()},{onConflict:'mes,fornecedor'});if(error)return dbErr(error);toast('Guardado');loadCom()},
- higAdd:d=>{const a=S.data.artigos.get(d.id);if(!a||!S.form)return;const l=S.form.linhas.find(x=>x.artigo===a.id);if(l){l.qt=(+l.qt||0)+1;redrawLinhas()}else addLinha(a)},
+ higAdd:d=>{const a=S.data.artigos.get(d.id);if(!a||!S.form)return;semSalto('higAdd',a.id,()=>{const l=S.form.linhas.find(x=>x.artigo===a.id);if(l){l.qt=(+l.qt||0)+1;redrawLinhas()}else addLinha(a)})},
  prop2enc:()=>{const p=S.data.propostas.get(S.form.id);if(!p)return;closeSheet();openForm('encomendas',null,{entidade:p.entidade,linhas:clone(p.linhas),obs:p.obs||'',estado:'Nova',_extra:{fromProp:p.id}})},
  mailgo:()=>{},
  pagEmail:async(d,b)=>{b.disabled=true;const t0=b.textContent;b.textContent='A enviar…';const r=await enviarPagEmail(d.id);b.disabled=false;b.textContent=t0;toast(r.msg);if(r.ok)closeSheet()},
