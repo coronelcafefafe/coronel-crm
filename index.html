@@ -255,6 +255,12 @@ table.tt{width:100%;border-collapse:collapse;font-size:13.5px}
 .ln-g label{display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--ink-3);font-weight:500;min-width:0}
 .ln-g input,.ln-g select{width:100%;border:1px solid var(--line);background:var(--surface-2);border-radius:8px;padding:6px 7px;min-width:0}
 .ln-t{font-weight:500;text-align:right;padding-bottom:7px;white-space:nowrap}
+.ln-grp{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin:8px 0 0;padding:0 2px}.ln-grp:first-child{margin-top:0}.ln-grp .num{margin-left:auto;font-size:13px;color:var(--ink-2)}
+.hig{margin-top:8px;border:1px solid var(--line);border-radius:11px;padding:10px;background:var(--surface)}
+.hig-l{max-height:360px;overflow-y:auto;border-top:1px solid var(--line);margin:0 -10px -10px}
+.hig-c{padding:10px 12px 4px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);font-weight:500}
+.hig-r{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--line)}
+.hig-r:last-child{border-bottom:0}.hig-n{flex:1;min-width:0}.hig-n b{display:block;font-weight:500;font-size:13.5px;line-height:1.3}.hig-n small{color:var(--ink-3);font-size:12px}
 .tot{display:grid;grid-template-columns:1fr auto;gap:4px 16px;margin-top:10px;font-size:14px;padding:12px 14px;background:var(--surface-2);border-radius:11px}
 .tot span{color:var(--ink-2)} .tot b{text-align:right}
 .tot .big{font-size:18px;color:var(--ink)}
@@ -392,12 +398,15 @@ const ORIGENS=['Facebook','Instagram','Site / loja online','Indicação','Porta 
 const TIPOSV=['No local','Telefone','Email','WhatsApp'];
 const REPV={'1s':'Todas as semanas','15d':'De 15 em 15 dias','1m':'Todos os meses','2m':'De 2 em 2 meses','3m':'De 3 em 3 meses'};
 const RESUMOS=['Acompanhamento','Prospeção','Proposta','Realizou encomenda','Reclamação','Contacto agendado','Instalação','Assistência'];
-const EST_ENC=['Nova','Em preparação','Entregue','Faturada','Cancelada'];
+const EST_ENC=['Nova','Em preparação','Entregue','Faturada','Para a Oxigénio','Enviada à Oxigénio','Cancelada'];
 const EST_PROP=['Rascunho','Enviada','Aceite','Recusada'];
 const TIPOS_PED=['Abertura de cliente','Instalação','Levantamento','Manutenção','Assistência'];
 const EST_PED=['Aberto','Agendado','Em curso','Concluído'];
 const PERIOD={'1':'Mensal','2':'Bimestral','3':'Trimestral','6':'Semestral','12':'Anual'};
-const FAMILIAS=['Café','Água','Vending','Chá e solúveis','Açúcar e acessórios','Papel A4','Equipamentos','Peças','Outros'];
+const FAMILIAS=['Café','Água','Vending','Chá e solúveis','Açúcar e acessórios','Papel A4','Higiene','Equipamentos','Peças','Outros'];
+/* higiene vendida por conta da Oxigénio: a Oxigénio entrega e fatura; a Coronel Café recebe 12% sobre o valor sem IVA */
+const OXI='Oxigénio',COMISSAO_OXI=0.12;
+const CAT_HIG=['Cozinha e loiça','Pisos e superfícies','WC e mãos','Lavandaria','Papel','Sacos do lixo','Panos, luvas e acessórios','Auto e oficina'];
 const IVAS={'23':'23%','13':'13%','6':'6%','0':'0%'};
 const METODOS=['Numerário','MB Way','Transferência','Multibanco','Cheque'];
 const EST_PAG={receber:'Por receber',recibo:'Recibo por emitir',fechado:'Recibo emitido'};
@@ -495,6 +504,8 @@ const F={
   {k:'preco',l:'Preço sem IVA (€)',t:'num'},
   {k:'iva',l:'IVA',t:'sel',o:IVAS,req:1,def:'23'},
   {k:'unidade',l:'Unidade',t:'text',def:'un'},
+  {k:'fornecedor',l:'Vendido por conta de',t:'sel',o:{'':'Coronel Café',[OXI]:'Oxigénio (higiene)'}},
+  {k:'categoria',l:'Categoria de higiene',t:'sel',o:['',...CAT_HIG]},
   {k:'foto',l:'Fotografia',t:'foto',full:1},
   {k:'descricao',l:'Descrição / ficha técnica',t:'area',full:1},
   {k:'ativo',l:'Artigo ativo',t:'bool',def:true},
@@ -565,7 +576,8 @@ function totais(L){let b=0,v=0;(L||[]).forEach(l=>{const x=lineBase(l);b+=x;v+=x
 const docTotal=d=>totais(d.linhas).total;
 function avencaStatus(a){if(a.ativa===false)return['Inativa','mute'];if(!a.proxima)return['Sem data','mute'];const n=diffDays(a.proxima,TODAY());if(n<0)return['Vencida há '+(-n)+' d','bad'];if(n===0)return['Cobrar hoje','warn'];if(n<=7)return['Vence em '+n+' d','warn'];return['A '+fD(a.proxima),'mute']}
 const encEntregue=d=>!!d.entregue||d.estado==='Entregue',encAberta=d=>!encEntregue(d)&&d.estado!=='Cancelada';
-const toneEnc={Nova:'gold','Em preparação':'info',Entregue:'ok',Faturada:'mute',Cancelada:'bad'};
+const toneEnc={Nova:'gold','Em preparação':'info',Entregue:'ok',Faturada:'mute','Para a Oxigénio':'gold','Enviada à Oxigénio':'ok',Cancelada:'bad'};
+const isHig=l=>!!l&&(l.forn===OXI||(!!l.artigo&&S.data.artigos?.get(l.artigo)?.fornecedor===OXI));
 const toneProp={Rascunho:'mute',Enviada:'info',Aceite:'ok',Recusada:'bad'};
 const tonePed={Aberto:'bad',Agendado:'warn','Em curso':'info','Concluído':'ok'};
 const tonePag={receber:'bad',recibo:'warn',fechado:'ok'};
@@ -598,11 +610,11 @@ function openSheet(html){$('#sheetc').innerHTML=html;$('#sheet').hidden=false;do
 function closeSheet(){$('#sheet').hidden=true;$('#sheetc').innerHTML='';document.body.classList.remove('lock');S.form=null;S.aiCtl?.abort()}
 
 /* ================= navegação ================= */
-const NAV=[['inicio','Início','home'],['leads','Negócios','lead'],['clientes','Clientes','users'],['agenda','Agenda e tarefas','cal'],['visitas','Visitas','pin'],['sep'],['encomendas','Encomendas','box'],['avencas','Avenças','repeat'],['pedidos','Pedidos e assistência','tool'],['pagamentos','Recebimentos','euro'],['pendentes','Pendentes','euro'],['sep'],['catalogo','Catálogo','grid'],['compras','Compras','cart'],['assistente','Assistente Claude','spark'],['sep'],['mais','Equipa e conta','users']];
+const NAV=[['inicio','Início','home'],['leads','Negócios','lead'],['clientes','Clientes','users'],['agenda','Agenda e tarefas','cal'],['visitas','Visitas','pin'],['sep'],['encomendas','Encomendas','box'],['avencas','Avenças','repeat'],['pedidos','Pedidos e assistência','tool'],['pagamentos','Recebimentos','euro'],['pendentes','Pendentes','euro'],['comissoes','Comissões','euro'],['sep'],['catalogo','Catálogo','grid'],['compras','Compras','cart'],['assistente','Assistente Claude','spark'],['sep'],['mais','Equipa e conta','users']];
 const SO_VALORES=['pagamentos','compras','pendentes'];
-const navList=()=>NAV.filter(n=>S.verValores||!SO_VALORES.includes(n[0]));
+const navList=()=>NAV.filter(n=>(S.verValores||!SO_VALORES.includes(n[0]))&&(n[0]!=='comissoes'||S.isAdmin));
 const TABS=[['inicio','Início','home'],['clientes','Clientes','users'],['agenda','Agenda','cal'],['pedidos','Pedidos','tool'],['mais','Mais','menu']];
-const TITLES={login:'Entrar',semacesso:'Sem acesso',inicio:'Início',leads:'Negócios',clientes:'Clientes',agenda:'Agenda e tarefas',visitas:'Visitas',encomendas:'Encomendas',propostas:'Propostas',avencas:'Avenças',pedidos:'Pedidos e assistência',pagamentos:'Recebimentos',pendentes:'Pendentes',catalogo:'Catálogo',compras:'Compras',assistente:'Assistente Claude',mais:'Equipa e conta',ficha:'Cliente'};
+const TITLES={login:'Entrar',semacesso:'Sem acesso',inicio:'Início',leads:'Negócios',clientes:'Clientes',agenda:'Agenda e tarefas',visitas:'Visitas',encomendas:'Encomendas',propostas:'Propostas',avencas:'Avenças',pedidos:'Pedidos e assistência',pagamentos:'Recebimentos',pendentes:'Pendentes',comissoes:'Comissões',catalogo:'Catálogo',compras:'Compras',assistente:'Assistente Claude',mais:'Equipa e conta',ficha:'Cliente'};
 function go(v,params={},push=true){if(push&&(S.view!==v||JSON.stringify(S.params)!==JSON.stringify(params)))S.hist.push([S.view,S.params]);if(S.hist.length>30)S.hist.shift();S.view=v;S.params=params;render();window.scrollTo(0,0)}
 function back(){const h=S.hist.pop();if(h){S.view=h[0];S.params=h[1];render();window.scrollTo(0,0)}else go('inicio',{},false)}
 function navCounts(){return{pedidos:D('pedidos').filter(p=>p.estado!=='Concluído').length,pagamentos:D('pagamentos').filter(p=>p.estado!=='fechado').length,agenda:D('tarefas').filter(t=>!t.feito&&t.data&&t.data<=TODAY()&&isMine(t)).length}}
@@ -659,6 +671,26 @@ function match(view,d,keys){const q=norm(S.q[view]);if(!q)return true;const hay=
 /* ================= views ================= */
 const VIEWS={};
 /* Pendentes: todos os clientes com dinheiro por receber no XD (só para quem vê valores) */
+/* comissões da higiene vendida por conta da Oxigénio (12% sobre o valor sem IVA), conferidas com o valor que a Oxigénio comunica */
+async function loadCom(){if(!S.isAdmin)return;const{data,error}=await S.db.from('comissoes').select('*');if(!error){S.comissoes=data||[];if(S.view==='comissoes')render()}}
+const mesNome=k=>{const[y,m]=k.split('-');return new Date(+y,+m-1,1).toLocaleDateString('pt-PT',{month:'long',year:'numeric'})};
+VIEWS.comissoes=()=>loadingOr(()=>{
+ if(!S.isAdmin)return '<div class="pg"><div class="panel empty"><b>Sem acesso</b>Só o administrador vê as comissões.</div></div>';
+ const L=D('encomendas').filter(x=>x.fornecedor===OXI&&x.estado!=='Cancelada'),M=new Map();
+ L.forEach(x=>{const k=String(x.data||x.criado||'').slice(0,7);if(!M.has(k))M.set(k,[]);M.get(k).push(x)});
+ (S.comissoes||[]).forEach(c=>{const k=String(c.mes).slice(0,7);if(!M.has(k))M.set(k,[])});
+ const meses=[...M.keys()].filter(Boolean).sort().reverse(),ab=meses.includes(S.f.comMes)?S.f.comMes:meses[0];
+ const info=k=>{const xs=M.get(k)||[],base=xs.reduce((s,x)=>s+totais(x.linhas).base,0),prev=Math.round(base*COMISSAO_OXI*100)/100,c=(S.comissoes||[]).find(c=>String(c.mes).slice(0,7)===k&&c.fornecedor===OXI);return{xs,base,prev,c,com:c&&c.comunicado!=null?+c.comunicado:null}};
+ const dif=i=>i.com==null?'<span class="note">por comunicar</span>':Math.abs(i.com-i.prev)<0.01?badge('Confere','ok'):`<span style="color:var(--bad);font-weight:500">${i.com-i.prev>0?'+':''}${eur(i.com-i.prev)}</span>`;
+ let h=`<div class="pg"><div class="panel"><div class="ph"><h2>Comissões · Oxigénio</h2><span class="note">${Math.round(COMISSAO_OXI*100)}% sobre o valor sem IVA das encomendas de higiene</span></div><div class="pb">`;
+ if(!meses.length)h+='<div class="empty"><b>Ainda sem encomendas de higiene</b>As encomendas com artigos da Oxigénio aparecem aqui por mês.</div>';
+ else h+=`<table class="tt"><thead><tr><th>Mês</th><th class="num">Enc.</th><th class="num">Vendas s/ IVA</th><th class="num">Prevista</th><th class="num">Comunicada</th><th class="num">Diferença</th></tr></thead><tbody>${meses.map(k=>{const i=info(k);return `<tr role="button" data-act="comMes" data-c="${k}" style="cursor:pointer${k===ab?';background:var(--surface-2)':''}"><td>${esc(mesNome(k))}</td><td class="num">${i.xs.length}</td><td class="num">${eur(i.base)}</td><td class="num">${eur(i.prev)}</td><td class="num">${i.com==null?'—':eur(i.com)}</td><td class="num">${dif(i)}</td></tr>`}).join('')}</tbody></table>`;
+ h+='</div></div>';
+ if(ab){const i=info(ab);
+  h+=`<div class="panel" style="margin-top:14px"><div class="ph"><h2>${esc(mesNome(ab))}</h2><button class="btn sm" data-act="comReg" data-c="${ab}">${i.com==null?'Registar valor comunicado':'Corrigir valor comunicado'}</button></div><div class="pb" style="padding-top:0">
+  <div class="mini"><div><span>Vendas sem IVA</span><b>${eur(i.base)}</b></div><div><span>Comissão prevista</span><b>${eur(i.prev)}</b></div><div><span>Comunicada pela Oxigénio</span><b>${i.com==null?'—':eur(i.com)}</b></div></div>
+  ${i.c?.notas?`<p class="note" style="margin:10px 0 0">${esc(i.c.notas)}</p>`:''}</div>${i.xs.length?listBlock('comissoes',i.xs.sort(byDateDesc),encRow,''):''}</div>`}
+ return h+'</div>'});
 VIEWS.pendentes=()=>loadingOr(()=>{
  if(!S.verValores)return `<div class="pg"><div class="panel empty"><b>Sem acesso</b>Este ecrã é só para a administração.</div></div>`;
  const g=new Map();D('xd_documentos').filter(d=>d.entidade&&+d.pendente>0.005).forEach(d=>{const x=g.get(d.entidade)||{v:0,a:0,n:0};x.v+=+d.pendente;x.n++;x.a=Math.max(x.a,diasAtraso(d));g.set(d.entidade,x)});
@@ -672,7 +704,7 @@ VIEWS.pendentes=()=>loadingOr(()=>{
 
 VIEWS.inicio=()=>loadingOr(()=>{
  const t=TODAY(),m=t.slice(0,7),pm=addMonths(t,-1).slice(0,7);
- const enc=D('encomendas').filter(e=>e.estado!=='Cancelada');
+ const enc=D('encomendas').filter(e=>e.estado!=='Cancelada'&&e.fornecedor!==OXI); // a higiene da Oxigénio não é venda da Coronel Café (vê-se em Comissões)
  const vm=enc.filter(e=>(e.data||'').startsWith(m)).reduce((s,e)=>s+docTotal(e),0);
  const vpm=enc.filter(e=>(e.data||'').startsWith(pm)).reduce((s,e)=>s+docTotal(e),0);
  const pag=D('pagamentos'),rec=pag.filter(p=>p.estado==='receber'),reci=pag.filter(p=>p.estado==='recibo');
@@ -854,7 +886,7 @@ VIEWS.ficha=()=>loadingOr(()=>{
 /* --- rows por coleção --- */
 const visRow=v=>rowH({col:'visitas',id:v.id,av:initials(entName(v.entidade)),avk:1,title:entName(v.entidade),sub:[fD(v.data),v.tipo,v.repetir?'Repete: '+REPV[v.repetir].toLowerCase():'',v.acao].filter(Boolean).join(' · '),badges:badge(v.resumo||'Visita',toneRes[v.resumo]||'mute')});
 const semNifB=id=>ent(id)?.semNif?badge('Sem NIF','warn'):'';
-const encRow=x=>rowH({col:'encomendas',id:x.id,title:entName(x.entidade),sub:[fD(x.data),(x.linhas||[]).length+' artigo'+((x.linhas||[]).length===1?'':'s'),x.entregarPor?'Entrega: '+nameOf(x.entregarPor):''].filter(Boolean).join(' · '),right:eur(docTotal(x)),badges:semNifB(x.entidade)+badge(x.estado||'Nova',toneEnc[x.estado]||'mute')});
+const encRow=x=>rowH({col:'encomendas',id:x.id,title:entName(x.entidade),sub:[fD(x.data),(x.linhas||[]).length+' artigo'+((x.linhas||[]).length===1?'':'s'),x.fornecedor===OXI?'Higiene · Oxigénio':D('encomendas').some(f=>f.pai===x.id&&f.estado!=='Cancelada')?'+ higiene (Oxigénio)':'',x.entregarPor?'Entrega: '+nameOf(x.entregarPor):''].filter(Boolean).join(' · '),right:eur(docTotal(x)),badges:semNifB(x.entidade)+badge(x.estado||'Nova',toneEnc[x.estado]||'mute')});
 const propRow=x=>rowH({col:'propostas',id:x.id,title:entName(x.entidade),sub:[fD(x.data),x.validade?'válida até '+fD(x.validade):''].filter(Boolean).join(' · '),right:eur(docTotal(x)),badges:(x.pdf?`<button class="btn sm" data-act="pdfVer" data-p="${esc(x.pdf)}" title="Abrir a proposta em PDF">${ic('doc',14)}PDF</button> `:'')+badge(x.estado||'Rascunho',toneProp[x.estado]||'mute')});
 const pedRow=x=>rowH({col:'pedidos',id:x.id,title:(x.tipo||'Pedido')+' · '+entName(x.entidade),sub:[x.agendado?'Agendado '+fD(x.agendado):fD(x.data),x.descricao].filter(Boolean).join(' — '),badges:badge(x.estado||'Aberto',tonePed[x.estado]||'mute')+(S.canWrite&&x.estado!=='Concluído'?`<button class="qa" data-act="pedNext" data-id="${x.id}">${EST_PED[EST_PED.indexOf(x.estado||'Aberto')+1]||'Concluído'}</button>`:'')});
 const avRow=x=>{const[s,t]=avencaStatus(x);return rowH({col:'avencas',id:x.id,title:entName(x.entidade),sub:[x.descricao,PERIOD[x.periodicidade],x.xdId&&x.ultimaCobranca?'faturada a '+fD(x.ultimaCobranca):''].filter(Boolean).join(' · '),right:eur(x.valor),badges:badge(s,t)+(x.xdEstado==='por_criar'?badge('Por criar no XD','warn'):'')+(x.xdId?badge('XD','mute'):'')+(S.canWrite&&x.ativa!==false&&!x.xdId?`<button class="qa" data-act="cobrar" data-id="${x.id}">Cobrar</button>`:'')})};
@@ -868,7 +900,7 @@ function genList(view,col,chips,filterFn,sortFn,rowFn,keys,emptyT,sumFn,newLabel
  return `<div class="pg">${roBanner()}${toolbarH(view,chips,col,newLabel,preset)}${sumFn?`<div class="sum">${sumFn(items)}</div>`:''}${listBlock(view,items,rowFn,emptyT)}</div>`}
 const byDateDesc=(a,b)=>(b.data||'').localeCompare(a.data||'');
 VIEWS.visitas=()=>loadingOr(()=>genList('visitas','visitas',['Todas','As minhas',...RESUMOS],(d,c)=>c==='Todas'||(c==='As minhas'?isMine(d):d.resumo===c),byDateDesc,visRow,['entidade','relatorio','acao','resumo','tipo'],'<b>Sem visitas</b>Registe as visitas com o relatório e o próximo passo.',i=>`<b>${i.length}</b> visita${i.length===1?'':'s'}`,'Nova visita'));
-VIEWS.encomendas=()=>loadingOr(()=>genList('encomendas','encomendas',['Ativas','Para eu entregar','Nova','Em preparação','Faturada','Concluídas','Canceladas'],(d,c)=>c==='Concluídas'?encEntregue(d)&&d.estado!=='Cancelada':c==='Canceladas'?d.estado==='Cancelada':encAberta(d)&&(c==='Ativas'||(c==='Para eu entregar'?d.entregarPor===S.uid:(d.estado||'Nova')===c)),byDateDesc,encRow,['entidade','obs','estado'],'<b>Sem encomendas</b>',i=>`<b>${i.length}</b> encomenda${i.length===1?'':'s'} · <b>${eur(i.filter(x=>x.estado!=='Cancelada').reduce((s,x)=>s+docTotal(x),0))}</b>`,'Nova encomenda'));
+VIEWS.encomendas=()=>loadingOr(()=>genList('encomendas','encomendas',['Ativas','Para eu entregar','Nova','Em preparação','Faturada','Higiene','Concluídas','Canceladas'],(d,c)=>c==='Higiene'?d.fornecedor===OXI&&d.estado!=='Cancelada':c==='Concluídas'?encEntregue(d)&&d.estado!=='Cancelada':c==='Canceladas'?d.estado==='Cancelada':encAberta(d)&&(c==='Ativas'||(c==='Para eu entregar'?d.entregarPor===S.uid:(d.estado||'Nova')===c)),byDateDesc,encRow,['entidade','obs','estado'],'<b>Sem encomendas</b>',i=>`<b>${i.length}</b> encomenda${i.length===1?'':'s'} · <b>${eur(i.filter(x=>x.estado!=='Cancelada').reduce((s,x)=>s+docTotal(x),0))}</b>`,'Nova encomenda'));
 VIEWS.propostas=()=>loadingOr(()=>genList('propostas','propostas',['Em aberto','Todas',...EST_PROP],(d,c)=>c==='Todas'||(c==='Em aberto'?['Rascunho','Enviada'].includes(d.estado||'Rascunho'):d.estado===c),byDateDesc,propRow,['entidade','obs','estado'],'<b>Sem propostas</b>Crie propostas com os artigos do catálogo e registe o envio.',i=>`<b>${i.length}</b> proposta${i.length===1?'':'s'} · <b>${eur(i.reduce((s,x)=>s+docTotal(x),0))}</b>`,'Nova proposta'));
 VIEWS.avencas=()=>loadingOr(()=>genList('avencas','avencas',['A vencer','Ativas','Inativas'],(d,c)=>c==='Inativas'?d.ativa===false:d.ativa!==false&&(c==='Ativas'||(d.proxima&&diffDays(d.proxima,TODAY())<=15)),(a,b)=>(a.proxima||'9').localeCompare(b.proxima||'9'),avRow,['entidade','descricao'],'<b>Nada a vencer nos próximos 15 dias</b>Veja todas em "Ativas".',i=>{const m=i.filter(a=>a.ativa!==false).reduce((s,a)=>s+(+a.valor||0)/(+a.periodicidade||1),0);return `<b>${i.length}</b> avença${i.length===1?'':'s'} · equivalente a <b>${eur(m)}</b>/mês. "Cobrar" cria o recebimento e passa para a próxima data.`},'Nova avença'));
 VIEWS.pedidos=()=>loadingOr(()=>genList('pedidos','pedidos',['Por tratar','Todos',...TIPOS_PED,'Concluídos'],(d,c)=>c==='Todos'||(c==='Por tratar'?d.estado!=='Concluído':c==='Concluídos'?d.estado==='Concluído':d.tipo===c&&d.estado!=='Concluído'),(a,b)=>(EST_PED.indexOf(a.estado)-EST_PED.indexOf(b.estado))||(a.agendado||a.data||'').localeCompare(b.agendado||b.data||''),pedRow,['entidade','descricao','tipo','equipamento'],'<b>Sem pedidos por tratar</b>Pedidos de abertura de cliente, instalação, manutenção e assistência.',i=>`<b>${i.length}</b> pedido${i.length===1?'':'s'}`,'Novo pedido'));
@@ -969,7 +1001,16 @@ async function saveForm(btn){
  if(fm.col==='visitas'||fm.col==='encomendas'||fm.col==='propostas'||fm.col==='pedidos'||fm.col==='avencas'||fm.col==='pagamentos'){const q=$('#f-entidade-q');if(q&&q.value.trim()&&!vals.entidade)miss.unshift('Cliente (escolha da lista)')}
  if(miss.length)return toast('Falta preencher: '+miss.join(', '));
  btn.disabled=true;const col=fm.col,wasNew=!fm.id;if(wasNew&&col==='avencas')vals.xdEstado='por_criar';if(col==='encomendas'){if(vals.estado==='Entregue')vals.entregue=true;else if(['Nova','Em preparação'].includes(vals.estado))vals.entregue=false}
+ // higiene (Oxigénio): as linhas de higiene ficam numa encomenda própria, ligada à de café (não entram na rota nem no XD)
+ let higH=[],higNovo=false;
+ if(col==='encomendas'){const ex=fm.id?S.data.encomendas.get(fm.id):null,L=vals.linhas||[],H=L.filter(isHig),C=L.filter(l=>!isHig(l)),temFilhas=!!fm.id&&D('encomendas').some(f=>f.pai===fm.id);
+  if(ex?.fornecedor===OXI||(H.length&&!C.length&&!temFilhas)){vals.fornecedor=OXI;vals.entregue=true;vals.entrega=null;vals.entregarPor=null;if(vals.estado!=='Cancelada')vals.estado=ex?.fornecedorEnviado?'Enviada à Oxigénio':'Para a Oxigénio';higNovo=!ex}
+  else if(H.length){vals.linhas=C;higH=H}}
  const id=await save(col,fm.id,vals);btn.disabled=false;if(!id)return;
+ if(higH.length){const f=D('encomendas').find(x=>x.pai===id&&x.fornecedor===OXI&&!x.fornecedorEnviado&&x.estado!=='Cancelada');
+  if(f)await patch('encomendas',f.id,{linhas:[...(f.linhas||[]),...higH]});
+  else await save('encomendas',null,{entidade:vals.entidade,data:vals.data||TODAY(),estado:'Para a Oxigénio',entregue:true,linhas:higH,obs:vals.obs,local:vals.local,resp:vals.resp,fornecedor:OXI,pai:id});
+  higNovo=true}
  // efeitos secundários
  if(col==='visitas'){
   if(vals.proximoContacto&&vals.entidade)await patch('entidades',vals.entidade,{proximoContacto:vals.proximoContacto});
@@ -979,7 +1020,7 @@ async function saveForm(btn){
  if(col==='propostas'&&vals.entidade){if(vals.estado==='Recusada'){if(ent(vals.entidade)?.estado==='proposta')await patch('entidades',vals.entidade,{estado:'cancelado'})}else await avancaEst(vals.entidade,'proposta')}
  if(fm.extra?.fromProp&&col==='encomendas')await patch('propostas',fm.extra.fromProp,{estado:'Aceite',encomenda:id});
  closeSheet();toast(wasNew?'Criado':'Guardado');
- if(wasNew&&col==='encomendas')encMailSheet(id);
+ if(col==='encomendas'&&(wasNew||higNovo))encMailSheet(id);
  if(wasNew&&col==='avencas'&&vals.entidade)xdSheet(vals.entidade,id);
  if(wasNew&&col==='pedidos')pedSheet(id);
  if(wasNew&&col==='pagamentos')pagMailSheet(id);
@@ -989,11 +1030,28 @@ async function saveForm(btn){
 
 /* --- linhas de encomenda/proposta --- */
 function linhasH(){
- const L=S.form?.linhas||[],t=totais(L);
- return `<div class="lns">${L.map((l,i)=>`<div class="ln"><input class="ln-n inp" data-li="${i}" data-f="nome" value="${esc(l.nome)}" aria-label="Descrição do artigo">
-  <div class="ln-g"><label>Qt.<input type="number" step="0.01" inputmode="decimal" data-li="${i}" data-f="qt" value="${esc(l.qt)}"></label><label>Preço<input type="number" step="0.01" inputmode="decimal" data-li="${i}" data-f="preco" value="${esc(l.preco)}"></label><label>Desc. %<input type="number" step="0.5" inputmode="decimal" data-li="${i}" data-f="desc" value="${esc(l.desc||0)}"></label><label>IVA<select data-li="${i}" data-f="iva">${opts(IVAS).map(([k,v])=>`<option value="${k}" ${String(l.iva)===k?'selected':''}>${v}</option>`).join('')}</select></label><span class="ln-t num" id="lt-${i}">${eur(lineBase(l))}</span><button type="button" class="ib" data-act="lnDel" data-i="${i}" aria-label="Remover linha">${ic('x',18)}</button></div></div>`).join('')}</div>
- <div class="pick" style="margin-top:8px;display:flex;gap:8px"><div style="flex:1;position:relative"><input class="inp" id="ln-q" data-lnpick="1" placeholder="Adicionar artigo do catálogo" autocomplete="off"><div class="pkl" id="pk-ln" hidden></div></div><button type="button" class="btn" data-act="lnFree">Linha livre</button></div>
+ const L=S.form?.linhas||[],t=totais(L),ln=(l,i)=>`<div class="ln"><input class="ln-n inp" data-li="${i}" data-f="nome" value="${esc(l.nome)}" aria-label="Descrição do artigo">
+  <div class="ln-g"><label>Qt.<input type="number" step="0.01" inputmode="decimal" data-li="${i}" data-f="qt" value="${esc(l.qt)}"></label><label>Preço<input type="number" step="0.01" inputmode="decimal" data-li="${i}" data-f="preco" value="${esc(l.preco)}"></label><label>Desc. %<input type="number" step="0.5" inputmode="decimal" data-li="${i}" data-f="desc" value="${esc(l.desc||0)}"></label><label>IVA<select data-li="${i}" data-f="iva">${opts(IVAS).map(([k,v])=>`<option value="${k}" ${String(l.iva)===k?'selected':''}>${v}</option>`).join('')}</select></label><span class="ln-t num" id="lt-${i}">${eur(lineBase(l))}</span><button type="button" class="ib" data-act="lnDel" data-i="${i}" aria-label="Remover linha">${ic('x',18)}</button></div></div>`;
+ const ix=L.map((l,i)=>i),hi=ix.filter(i=>isHig(L[i])),ca=ix.filter(i=>!isHig(L[i]));
+ const doc=S.form?.col==='encomendas'||S.form?.col==='propostas';
+ const sub=(I,tit,note)=>`<div class="ln-grp"><b>${tit}</b><span class="note">${note}</span><span class="num">${eur(totais(I.map(i=>L[i])).base)} s/ IVA</span></div>`;
+ const corpo=hi.length&&doc?(ca.length?sub(ca,'Coronel Café','entregue por nós')+ca.map(i=>ln(L[i],i)).join(''):'')+sub(hi,'Higiene · Oxigénio','entregue e faturada pela Oxigénio')+hi.map(i=>ln(L[i],i)).join(''):L.map(ln).join('');
+ const tab=S.lnTab==='hig'&&doc?'hig':'cafe';
+ return `<div class="lns">${corpo}</div>
+ ${doc?`<div class="chips" style="margin-top:10px"><button type="button" class="chipb ${tab==='cafe'?'on':''}" data-act="lnTab" data-c="cafe">Café e vending</button><button type="button" class="chipb ${tab==='hig'?'on':''}" data-act="lnTab" data-c="hig">Higiene</button></div>`:''}
+ ${tab==='hig'?higBoxH():`<div class="pick" style="margin-top:8px;display:flex;gap:8px"><div style="flex:1;position:relative"><input class="inp" id="ln-q" data-lnpick="1" placeholder="Adicionar artigo do catálogo" autocomplete="off"><div class="pkl" id="pk-ln" hidden></div></div><button type="button" class="btn" data-act="lnFree">Linha livre</button></div>`}
  <div class="tot num" id="ln-tot">${totH(t)}</div>`}
+/* catálogo de higiene (Oxigénio) dentro da encomenda: categorias + pesquisa + lista compacta */
+function higBoxH(){const c=S.higCat||'';const cats=CAT_HIG.filter(k=>D('artigos').some(a=>a.fornecedor===OXI&&a.ativo!==false&&a.categoria===k));
+ return `<div class="hig"><p class="note" style="margin:0 0 8px">Entregue e faturado pela Oxigénio. Na confirmação, o cliente vê esta parte separada do café.</p>
+ <input class="inp" data-higq="1" placeholder="Pesquisar higiene (ex.: loiça, guardanapo)" value="${esc(S.higQ||'')}" autocomplete="off">
+ <div class="chips" style="margin:8px 0"><button type="button" class="chipb ${!c?'on':''}" data-act="higCat" data-c="">Tudo</button>${cats.map(k=>`<button type="button" class="chipb ${c===k?'on':''}" data-act="higCat" data-c="${esc(k)}">${esc(k)}</button>`).join('')}</div>
+ <div class="hig-l" id="hig-list">${higListH()}</div></div>`}
+function higListH(){const c=S.higCat||'',q=norm(S.higQ||''),L=S.form?.linhas||[];
+ const items=D('artigos').filter(a=>a.fornecedor===OXI&&a.ativo!==false&&(!c||a.categoria===c)&&(!q||norm([a.nome,a.ref,a.categoria,a.descricao].join(' ')).includes(q))).sort((a,b)=>(CAT_HIG.indexOf(a.categoria)-CAT_HIG.indexOf(b.categoria))||String(a.nome).localeCompare(String(b.nome),'pt'));
+ if(!items.length)return '<p class="note" style="padding:10px 12px;margin:0">Sem artigos de higiene com esta pesquisa.</p>';
+ let cat='';return items.map(a=>{const n=L.filter(l=>l.artigo===a.id).reduce((s,l)=>s+(+l.qt||0),0);const h=!c&&!q&&a.categoria!==cat?`<div class="hig-c">${esc(a.categoria||'Outros')}</div>`:'';cat=a.categoria;
+  return `${h}<div class="hig-r"><div class="hig-n"><b>${esc(a.nome)}</b><small>${esc(a.unidade||'')}${a.unidade?' · ':''}${eur(a.preco)}</small></div><button type="button" class="btn sm ${n?'gold':''}" data-act="higAdd" data-id="${a.id}">${n?`+1 · ${n} na encomenda`:'Adicionar'}</button></div>`}).join('')}
 const totH=t=>`<span>Total sem IVA</span><b>${eur(t.base)}</b><span>IVA</span><b>${eur(t.iva)}</b><span class="big">Total</span><b class="big">${eur(t.total)}</b>`;
 function histH(){const eid=($('#f-entidade')?.value)||S.form?.ent0||'';if(!eid)return '';
  const L=D('encomendas').filter(x=>x.entidade===eid&&x.id!==S.form?.id&&x.estado!=='Cancelada').sort(byDateDesc).slice(0,5);
@@ -1001,7 +1059,7 @@ function histH(){const eid=($('#f-entidade')?.value)||S.form?.ent0||'';if(!eid)r
  return `<div class="hist"><div class="hist-h">Últimas encomendas de ${esc(entName(eid))}</div>${L.length?L.map(x=>`<div class="hist-i"><div class="hist-t"><b>${fDY(x.data)}</b><span class="note">${esc(x.estado||'Nova')} · ${eur(docTotal(x))}</span>${ro?'':`<button type="button" class="btn sm" data-act="repEnc" data-id="${x.id}">Repetir</button>`}</div><ul>${(x.linhas||[]).map(l=>`<li>${esc(l.qt)} × ${esc(l.nome)} <span class="num">${eur(l.preco)}${+l.desc?` (−${esc(l.desc)}%)`:''}</span></li>`).join('')||'<li class="note">Sem artigos</li>'}</ul></div>`).join(''):'<p class="note">Ainda não há encomendas deste cliente no CRM.</p>'}</div>`}
 function redrawHist(){const el=$('#enc-hist');if(el)el.innerHTML=histH()}
 function redrawLinhas(){const el=$('#linhas');if(el)el.innerHTML=linhasH();if(S.form?.col==='encomendas')avisoRota()}
-function addLinha(a){S.form.linhas.push(a?{artigo:a.id,nome:a.nome+(a.ref?' ('+a.ref+')':''),qt:1,preco:+a.preco||0,desc:0,iva:String(a.iva??'23')}:{nome:'',qt:1,preco:0,desc:0,iva:'23'});redrawLinhas();const ins=document.querySelectorAll('.ln-n');const last=ins[ins.length-1];if(last&&!a)last.focus()}
+function addLinha(a){S.form.linhas.push(a?{artigo:a.id,nome:a.fornecedor===OXI?a.nome+(a.unidade?' · '+a.unidade:''):a.nome+(a.ref?' ('+a.ref+')':''),qt:1,preco:+a.preco||0,desc:0,iva:String(a.iva??'23'),...(a.fornecedor===OXI?{forn:OXI}:{})}:{nome:'',qt:1,preco:0,desc:0,iva:'23'});redrawLinhas();const ins=document.querySelectorAll('.ln-n');const last=ins[ins.length-1];if(last&&!a)last.focus()}
 
 /* --- pickers --- */
 function showPick(k,q){
@@ -1011,7 +1069,7 @@ function showPick(k,q){
  box.innerHTML=items.map(e=>`<button type="button" data-act="pick" data-k="${k}" data-id="${e.id}"><span>${esc(e.nome)}</span><small>${esc([ESTADOS[e.estado],e.localidade].filter(Boolean).join(' · '))}</small></button>`).join('')+(S.canWrite?`<button type="button" class="new" data-act="pickNew" data-k="${k}" data-c="${esc(q)}">+ Criar lead "${esc(q)}"</button>`:'');
  box.hidden=false}
 function showLnPick(q){const box=$('#pk-ln');if(!box)return;const nq=norm(q);if(!nq){box.hidden=true;return}
- const items=D('artigos').filter(a=>a.ativo!==false&&norm([a.nome,a.ref,a.familia].join(' ')).includes(nq)).slice(0,8);
+ const items=D('artigos').filter(a=>a.ativo!==false&&a.fornecedor!==OXI&&norm([a.nome,a.ref,a.familia].join(' ')).includes(nq)).slice(0,8);
  box.innerHTML=items.length?items.map(a=>`<button type="button" data-act="lnAdd" data-id="${a.id}"><span>${esc(a.nome)}</span><small>${esc([a.ref,a.familia,a.preco!=null?eur(a.preco):''].filter(Boolean).join(' · '))}</small></button>`).join(''):`<button type="button" data-act="lnFree" data-c="${esc(q)}"><span>Sem artigos no catálogo com "${esc(q)}"</span><small>Adicionar como linha livre</small></button>`;box.hidden=false}
 
 /* ================= Claude dentro do CRM ================= */
@@ -1125,6 +1183,13 @@ const ACT={
  lnAdd:d=>{const a=S.data.artigos.get(d.id);addLinha(a)},
  lnFree:d=>{addLinha(null);if(d.c){const L=S.form.linhas;L[L.length-1].nome=d.c;redrawLinhas()}},
  lnDel:d=>{S.form.linhas.splice(+d.i,1);redrawLinhas()},
+ lnTab:d=>{S.lnTab=d.c;redrawLinhas()},
+ higCat:d=>{S.higCat=d.c||'';redrawLinhas()},
+ comMes:d=>{S.f.comMes=d.c;render()},
+ comReg:async d=>{const k=d.c,c=(S.comissoes||[]).find(c=>String(c.mes).slice(0,7)===k&&c.fornecedor===OXI);const v=prompt(`Comissão comunicada pela Oxigénio para ${mesNome(k)} (€)`,c?.comunicado!=null?String(c.comunicado).replace('.',','):'');if(v===null)return;
+  const n=v.trim()===''?null:parseFloat(v.replace(/\s/g,'').replace(',','.'));if(v.trim()!==''&&!isFinite(n))return toast('Valor inválido');
+  const{error}=await S.db.from('comissoes').upsert({mes:k+'-01',fornecedor:OXI,comunicado:n,atualizado:new Date().toISOString()},{onConflict:'mes,fornecedor'});if(error)return dbErr(error);toast('Guardado');loadCom()},
+ higAdd:d=>{const a=S.data.artigos.get(d.id);if(!a||!S.form)return;const l=S.form.linhas.find(x=>x.artigo===a.id);if(l){l.qt=(+l.qt||0)+1;redrawLinhas()}else addLinha(a)},
  prop2enc:()=>{const p=S.data.propostas.get(S.form.id);if(!p)return;closeSheet();openForm('encomendas',null,{entidade:p.entidade,linhas:clone(p.linhas),obs:p.obs||'',estado:'Nova',_extra:{fromProp:p.id}})},
  mailgo:()=>{},
  pagEmail:async(d,b)=>{b.disabled=true;const t0=b.textContent;b.textContent='A enviar…';const r=await enviarPagEmail(d.id);b.disabled=false;b.textContent=t0;toast(r.msg);if(r.ok)closeSheet()},
@@ -1181,6 +1246,7 @@ document.addEventListener('input',e=>{
  if(t.dataset.q){S.q[t.dataset.q]=t.value;S.lim[t.dataset.q]=60;render();return}
  if(t.dataset.pick){$('#f-'+t.dataset.pick).value='';showPick(t.dataset.pick,t.value);return}
  if(t.dataset.lnpick){showLnPick(t.value);return}
+ if(t.dataset.higq){S.higQ=t.value;const hl=$('#hig-list');if(hl)hl.innerHTML=higListH();return}
  if(t.dataset.li!==undefined&&S.form){const i=+t.dataset.li,f=t.dataset.f,L=S.form.linhas;if(!L[i])return;L[i][f]=['qt','preco','desc'].includes(f)?(t.value===''?0:parseFloat(t.value)):t.value;const lt=$('#lt-'+i);if(lt)lt.textContent=eur(lineBase(L[i]));$('#ln-tot').innerHTML=totH(totais(L));return}
  if(t.id==='chatin'){t.style.height='auto';t.style.height=Math.min(t.scrollHeight,160)+'px'}});
 document.addEventListener('change',async e=>{
@@ -1271,12 +1337,12 @@ async function enviarPagEmail(id){const{data:{session}}=await S.db.auth.getSessi
   return{ok:false,msg:j.code==='sem_email'?'O cliente não tem email na ficha':j.code==='email_desligado'?'Envio por email ainda não está ligado':'Não foi possível enviar o email'}}
  catch(e){return{ok:false,msg:'Sem ligação: o email não foi enviado'}}}
 function encMailSheet(id){const x=S.data.encomendas.get(id);if(!x)return;const m=encMail(x);
- openSheet(`<div class="sh"><h2>Encomenda guardada</h2><button class="ib" data-act="close" aria-label="Fechar">${ic('x')}</button></div><div class="sb"><p>${m.cliente?`Enviar a confirmação para <b>${esc(m.to)}</b>, com cópia para ${GERAL}?`:`Este cliente não tem email na ficha. A encomenda segue só para <b>${GERAL}</b>.`}</p><p class="note">${CFG.emailEncomendas?'O email sai de '+GERAL+'.':'Abre o seu programa de email com a mensagem já preenchida. Reveja e carregue em Enviar.'}</p></div><div class="sf"><span class="grow"></span><button class="btn" data-act="close" type="button">Agora não</button>${CFG.emailEncomendas?`<button class="btn pri" data-act="encEmail" data-id="${x.id}" type="button">Enviar email</button>`:`<a class="btn pri" data-act="mailgo" href="${esc(m.href)}">Abrir email</a>`}</div>`)}
+ openSheet(`<div class="sh"><h2>Encomenda guardada</h2><button class="ib" data-act="close" aria-label="Fechar">${ic('x')}</button></div><div class="sb"><p>${m.cliente?`Enviar a confirmação para <b>${esc(m.to)}</b>, com cópia para ${GERAL}?`:`Este cliente não tem email na ficha. A encomenda segue só para <b>${GERAL}</b>.`}</p><p class="note">${CFG.emailEncomendas?'O email sai de '+GERAL+'.':'Abre o seu programa de email com a mensagem já preenchida. Reveja e carregue em Enviar.'}</p>${(x.fornecedor===OXI||D('encomendas').some(f=>f.pai===x.id&&f.fornecedor===OXI&&f.estado!=='Cancelada'))&&CFG.emailEncomendas?`<p class="note" style="color:var(--ink)">Tem higiene: o cliente recebe as duas partes na mesma confirmação e a parte de higiene segue num email próprio para a Oxigénio, com os dados de entrega.</p>`:''}</div><div class="sf"><span class="grow"></span><button class="btn" data-act="close" type="button">Agora não</button>${CFG.emailEncomendas?`<button class="btn pri" data-act="encEmail" data-id="${x.id}" type="button">Enviar email</button>`:`<a class="btn pri" data-act="mailgo" href="${esc(m.href)}">Abrir email</a>`}</div>`)}
 async function enviarEncEmail(id){
  const{data:{session}}=await S.db.auth.getSession();
  try{const r=await fetch(CFG.url+'/functions/v1/encomenda-email',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?.access_token||''),apikey:CFG.anonKey},body:JSON.stringify({id})});
   const j=await r.json().catch(()=>({}));
-  if(r.ok)return{ok:true,msg:'Email enviado para '+(j.para||'geral@coronelcafe.com')+(j.cliente?' (cópia para geral@)':'')};
+  if(r.ok||r.status===207)return{ok:r.ok,msg:'Email enviado para '+(j.para||'geral@coronelcafe.com')+(j.cliente?' (cópia para geral@)':'')+(j.oxigenio==='teste'?'. Pedido à Oxigénio em teste: foi só para geral@':j.oxigenio?'. Pedido enviado à Oxigénio':'')+(j.oxigenio_erro?'. O email para a Oxigénio falhou: tente outra vez':'')};
   return{ok:false,msg:j.code==='email_desligado'?'Envio por email ainda não está ligado':'Não foi possível enviar o email da encomenda'}}
  catch(e){return{ok:false,msg:'Sem ligação: o email da encomenda não foi enviado'}}}
 async function callClaude(body,signal){
@@ -1328,6 +1394,7 @@ async function start(session){
  await Promise.all(COLS.map(c=>loadTable(c).catch(e=>{console.warn(c,e);S.ready[c]=true})));
  loadTable('xd_documentos').catch(e=>console.warn('xd',e));
  loadTable('entrega_locais').catch(e=>console.warn('locais',e));
+ loadCom().catch(e=>console.warn('comissoes',e));
  S.db.channel('crm').on('postgres_changes',{event:'*',schema:'public'},p=>{const col=p.table;if(col==='membros'){loadTeam();return}if(!S.data[col])return;if(p.eventType==='DELETE'){if(p.old?.id)S.data[col].delete(p.old.id)}else{const o=fromRow(p.new);S.data[col].set(o.id,o)}schedule()}).subscribe();
  S.sample=CFG.claude===false?null:makeSample();S.assets=S.canWrite?{upload:uploadFoto}:null;schedule();
 }
