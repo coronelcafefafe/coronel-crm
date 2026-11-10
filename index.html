@@ -256,6 +256,15 @@ table.tt{width:100%;border-collapse:collapse;font-size:13.5px}
 .ln-g input,.ln-g select{width:100%;border:1px solid var(--line);background:var(--surface-2);border-radius:8px;padding:6px 7px;min-width:0}
 .ln-t{font-weight:500;text-align:right;padding-bottom:7px;white-space:nowrap}
 .ln-grp{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin:8px 0 0;padding:0 2px}.ln-grp:first-child{margin-top:0}.ln-grp .num{margin-left:auto;font-size:13px;color:var(--ink-2)}
+.cat-l{border-top:1px solid var(--line);margin:0 -10px -10px;padding:10px;max-height:520px;overflow-y:auto}
+.cat-g{display:grid;grid-template-columns:repeat(auto-fill,minmax(138px,1fr));gap:8px}
+.cat-c{border:1px solid var(--line);border-radius:11px;padding:8px;display:flex;flex-direction:column;gap:4px;background:var(--surface)}
+.cat-c.on{border-color:var(--ink)}
+.cat-i{aspect-ratio:1/1;border-radius:8px;background:#fff;display:grid;place-items:center;overflow:hidden;color:var(--ink-3);font-size:20px;letter-spacing:.08em;border:1px solid var(--line)}
+.cat-i img{width:100%;height:100%;object-fit:contain;padding:6px;box-sizing:border-box}
+.cat-n{font-size:13px;font-weight:500;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:2.6em}
+.cat-p{font-size:12px;color:var(--ink-3)}
+.cat-c .btn{margin-top:auto;width:100%;justify-content:center}
 .hig{margin-top:8px;border:1px solid var(--line);border-radius:11px;padding:10px;background:var(--surface)}
 .hig-l{max-height:360px;overflow-y:auto;border-top:1px solid var(--line);margin:0 -10px -10px}
 .hig-c{padding:10px 12px 4px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);font-weight:500}
@@ -1039,8 +1048,30 @@ function linhasH(){
  const tab=S.lnTab==='hig'&&doc?'hig':'cafe';
  return `<div class="lns">${corpo}</div>
  ${doc?`<div class="chips" style="margin-top:10px"><button type="button" class="chipb ${tab==='cafe'?'on':''}" data-act="lnTab" data-c="cafe">Café e vending</button><button type="button" class="chipb ${tab==='hig'?'on':''}" data-act="lnTab" data-c="hig">Higiene</button></div>`:''}
- ${tab==='hig'?higBoxH():`<div class="pick" style="margin-top:8px;display:flex;gap:8px"><div style="flex:1;position:relative"><input class="inp" id="ln-q" data-lnpick="1" placeholder="Adicionar artigo do catálogo" autocomplete="off"><div class="pkl" id="pk-ln" hidden></div></div><button type="button" class="btn" data-act="lnFree">Linha livre</button></div>`}
+ ${tab==='hig'?higBoxH():doc?cafeBoxH():`<div class="pick" style="margin-top:8px;display:flex;gap:8px"><div style="flex:1;position:relative"><input class="inp" id="ln-q" data-lnpick="1" placeholder="Adicionar artigo do catálogo" autocomplete="off"><div class="pkl" id="pk-ln" hidden></div></div><button type="button" class="btn" data-act="lnFree">Linha livre</button></div>`}
  <div class="tot num" id="ln-tot">${totH(t)}</div>`}
+/* catálogo de café e vending dentro da encomenda: habituais do cliente + famílias + pesquisa, em cartões com fotografia */
+const CAFE_FAM=['Café','Água','Vending','Chá e solúveis','Açúcar e acessórios','Papel A4','Equipamentos','Outros'];
+const cafeArts=()=>D('artigos').filter(a=>a.ativo!==false&&!a.oculto&&a.fornecedor!==OXI&&a.familia!=='Peças'&&a.familia!=='Higiene');
+function habituais(eid){const m=new Map();if(!eid)return m;
+ D('encomendas').forEach(x=>{if(x.entidade!==eid||x.estado==='Cancelada')return;(x.linhas||[]).forEach(l=>{if(l.artigo)m.set(l.artigo,(m.get(l.artigo)||0)+1)})});
+ const porRef=new Map(cafeArts().filter(a=>a.ref).map(a=>[String(a.ref),a.id]));
+ D('xd_documentos').forEach(d=>{if(d.entidade!==eid)return;(d.linhas||[]).forEach(l=>{const id=porRef.get(String(l.ref||''));if(id)m.set(id,(m.get(id)||0)+1)})});
+ return m}
+function popular(){const now=Date.now();if(S._pop&&now-S._pop.t<60000)return S._pop.m;const m=new Map();D('encomendas').forEach(x=>(x.linhas||[]).forEach(l=>{if(l.artigo)m.set(l.artigo,(m.get(l.artigo)||0)+1)}));S._pop={t:now,m};return m}
+function cafeBoxH(){const eid=($('#f-entidade')?.value)||S.form?.ent0||'',hab=habituais(eid);
+ const fams=CAFE_FAM.filter(f=>cafeArts().some(a=>a.familia===f));let c=S.cafeFam??(hab.size?'hab':'Café');if(c==='hab'&&!hab.size)c='Café';
+ return `<div class="hig"><input class="inp" data-cafeq="1" placeholder="Pesquisar no catálogo (nome ou referência)" value="${esc(S.cafeQ||'')}" autocomplete="off">
+ <div class="chips" style="margin:8px 0">${hab.size?`<button type="button" class="chipb ${c==='hab'?'on':''}" data-act="cafeFam" data-c="hab">Habituais do cliente</button>`:''}${fams.map(f=>`<button type="button" class="chipb ${c===f?'on':''}" data-act="cafeFam" data-c="${esc(f)}">${esc(f)}</button>`).join('')}<button type="button" class="chipb" data-act="lnFree">+ Linha livre</button></div>
+ <div class="cat-l" id="cafe-list">${cafeListH()}</div></div>`}
+function cafeListH(){const eid=($('#f-entidade')?.value)||S.form?.ent0||'',hab=habituais(eid),pop=popular(),q=norm(S.cafeQ||''),L=S.form?.linhas||[];
+ let c=S.cafeFam??(hab.size?'hab':'Café');if(c==='hab'&&!hab.size)c='Café';
+ let items=cafeArts().filter(a=>q?norm([a.nome,a.ref,a.familia].join(' ')).includes(q):c==='hab'?hab.has(a.id):a.familia===c);
+ items.sort((a,b)=>((c==='hab'?(hab.get(b.id)||0)-(hab.get(a.id)||0):0))||((pop.get(b.id)||0)-(pop.get(a.id)||0))||((b.foto?1:0)-(a.foto?1:0))||String(a.nome).localeCompare(String(b.nome),'pt'));
+ const tot=items.length;items=items.slice(0,S.cafeLim||48);
+ if(!tot)return `<p class="note" style="padding:10px 12px;margin:0">Sem artigos${q?' com "'+esc(S.cafeQ)+'"':''}. Use "+ Linha livre" para escrever à mão.</p>`;
+ return `<div class="cat-g">${items.map(a=>{const n=L.filter(l=>l.artigo===a.id).reduce((s,l)=>s+(+l.qt||0),0);
+  return `<div class="cat-c${n?' on':''}"><div class="cat-i">${a.foto?`<img src="${esc(fotoUrl(a.foto))}" alt="" loading="lazy">`:`<span>${esc(initials(a.nome))}</span>`}</div><div class="cat-n">${esc(a.nome)}</div><div class="cat-p">${a.preco!=null&&a.preco!==''?eur(a.preco):'—'}${a.unidade&&a.unidade!=='un'&&a.unidade!=='unidade'?' · '+esc(a.unidade):''}</div><button type="button" class="btn sm ${n?'gold':''}" data-act="cafeAdd" data-id="${a.id}">${n?`+1 · ${n} na encomenda`:'Adicionar'}</button></div>`}).join('')}</div>${tot>items.length?`<button type="button" class="more" data-act="cafeMais">Mostrar mais (${tot-items.length})</button>`:''}`}
 /* catálogo de higiene (Oxigénio) dentro da encomenda: categorias + pesquisa + lista compacta */
 function higBoxH(){const c=S.higCat||'';const cats=CAT_HIG.filter(k=>D('artigos').some(a=>a.fornecedor===OXI&&a.ativo!==false&&a.categoria===k));
  return `<div class="hig"><p class="note" style="margin:0 0 8px">Entregue e faturado pela Oxigénio. Na confirmação, o cliente vê esta parte separada do café.</p>
@@ -1175,7 +1206,7 @@ const ACT={
  mon:d=>{S.cal.month=addMonths(S.cal.month+'-01',+d.d).slice(0,7);render()},
  hoje:()=>{S.cal.month=TODAY().slice(0,7);S.cal.day=TODAY();render()},
  quem:d=>{S.cal.quem=d.c;render()},
- pick:d=>{$('#f-'+d.k).value=d.id;$('#f-'+d.k+'-q').value=entName(d.id);$('#pk-'+d.k).hidden=true;if(d.k==='entidade'){redrawHist();avisoNif();avisoRota()}},
+ pick:d=>{$('#f-'+d.k).value=d.id;$('#f-'+d.k+'-q').value=entName(d.id);$('#pk-'+d.k).hidden=true;if(d.k==='entidade'){redrawHist();avisoNif();avisoRota();if(['encomendas','propostas'].includes(S.form?.col)){S.cafeFam=undefined;const cl=$('#cafe-list');if(cl)redrawLinhas()}}},
  repEnc:d=>{const x=S.data.encomendas.get(d.id);if(!x||!S.form)return;S.form.linhas=clone(x.linhas||[]);redrawLinhas();toast('Artigos copiados da encomenda de '+fDY(x.data))},
  encEntregue:async(d,b)=>{b.disabled=true;const ok=await patch('encomendas',S.form.id,{estado:'Entregue',entrega:TODAY(),entregue:true});b.disabled=false;if(ok){closeSheet();toast('Encomenda marcada como entregue')}},
  repEnc2:()=>{const x=S.data.encomendas.get(S.form.id);if(!x)return;closeSheet();openForm('encomendas',null,{entidade:x.entidade,linhas:clone(x.linhas||[]),estado:'Nova'})},
@@ -1185,6 +1216,9 @@ const ACT={
  lnDel:d=>{S.form.linhas.splice(+d.i,1);redrawLinhas()},
  lnTab:d=>{S.lnTab=d.c;redrawLinhas()},
  higCat:d=>{S.higCat=d.c||'';redrawLinhas()},
+ cafeFam:d=>{S.cafeFam=d.c;S.cafeQ='';S.cafeLim=48;redrawLinhas()},
+ cafeMais:()=>{S.cafeLim=(S.cafeLim||48)+48;const cl=$('#cafe-list');if(cl)cl.innerHTML=cafeListH()},
+ cafeAdd:d=>{const a=S.data.artigos.get(d.id);if(!a||!S.form)return;const l=S.form.linhas.find(x=>x.artigo===a.id);if(l){l.qt=(+l.qt||0)+1;redrawLinhas()}else addLinha(a)},
  comMes:d=>{S.f.comMes=d.c;render()},
  comReg:async d=>{const k=d.c,c=(S.comissoes||[]).find(c=>String(c.mes).slice(0,7)===k&&c.fornecedor===OXI);const v=prompt(`Comissão comunicada pela Oxigénio para ${mesNome(k)} (€)`,c?.comunicado!=null?String(c.comunicado).replace('.',','):'');if(v===null)return;
   const n=v.trim()===''?null:parseFloat(v.replace(/\s/g,'').replace(',','.'));if(v.trim()!==''&&!isFinite(n))return toast('Valor inválido');
@@ -1247,6 +1281,7 @@ document.addEventListener('input',e=>{
  if(t.dataset.pick){$('#f-'+t.dataset.pick).value='';showPick(t.dataset.pick,t.value);return}
  if(t.dataset.lnpick){showLnPick(t.value);return}
  if(t.dataset.higq){S.higQ=t.value;const hl=$('#hig-list');if(hl)hl.innerHTML=higListH();return}
+ if(t.dataset.cafeq){S.cafeQ=t.value;S.cafeLim=48;const cl=$('#cafe-list');if(cl)cl.innerHTML=cafeListH();return}
  if(t.dataset.li!==undefined&&S.form){const i=+t.dataset.li,f=t.dataset.f,L=S.form.linhas;if(!L[i])return;L[i][f]=['qt','preco','desc'].includes(f)?(t.value===''?0:parseFloat(t.value)):t.value;const lt=$('#lt-'+i);if(lt)lt.textContent=eur(lineBase(L[i]));$('#ln-tot').innerHTML=totH(totais(L));return}
  if(t.id==='chatin'){t.style.height='auto';t.style.height=Math.min(t.scrollHeight,160)+'px'}});
 document.addEventListener('change',async e=>{
