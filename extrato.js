@@ -4,6 +4,7 @@
 window.EXT_INIT = function () {
   const EMPRESA = 'LPAM Unipessoal Lda · Urb. Capitão Salgueiro Maia, 69/70, 4820-260 Fafe';
   const CONTACTO = '919 982 150 · geral@coronelcafe.com · coronelcafe.com';
+  const IBAN = 'PT50 0010 0000 5596 1190 0014 4', TITULAR = 'LPAM Unipessoal Lda', BANCO = 'BPI';
   const TIPO = { FT: 'Fatura', FR: 'Fatura-recibo', FS: 'Fatura simplificada', ND: 'Nota de débito', NC: 'Nota de crédito' };
   const dPT = s => s ? String(s).slice(0, 10).split('-').reverse().join('/') : '';
   const emailOk = s => String(s || '').split(/[;,\s]+/).find(v => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) || '';
@@ -36,7 +37,7 @@ window.EXT_INIT = function () {
       const n = doc.getNumberOfPages();
       for (let i = 1; i <= n; i++) {
         doc.setPage(i); rule(281, GOLD, 0.3); doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); cor(INK2);
-        doc.text(EMPRESA, M, 286); doc.text(CONTACTO, M, 290); if (n > 1) doc.text(`${i}/${n}`, W - M, 290, { align: 'right' });
+        doc.text(EMPRESA + ' · IBAN ' + IBAN, M, 286); doc.text(CONTACTO, M, 290); if (n > 1) doc.text(`${i}/${n}`, W - M, 290, { align: 'right' });
       }
     };
     // cabeçalho
@@ -66,11 +67,16 @@ window.EXT_INIT = function () {
       y += 2.8; rule(y); y += 5.2;
     });
     // total
-    if (y > 250) { doc.addPage(); y = 22; }
+    if (y > 222) { doc.addPage(); y = 22; }
     y += 2; doc.setFillColor(...BOX); doc.roundedRect(W - M - 78, y - 5, 78, 12, 2, 2, 'F');
     doc.setFontSize(9); cor(INK2); doc.text('Total por pagar', W - M - 74, y + 2.5);
     doc.setFont('helvetica', 'bold'); doc.setFontSize(12); cor(INK); doc.text(eur(tot), W - M - 4, y + 2.5, { align: 'right' }); doc.setFont('helvetica', 'normal');
-    y += 18; doc.setFontSize(9); cor(INK2);
+    // pagamento por transferência
+    y += 14; doc.setDrawColor(...GOLD); doc.setLineWidth(0.3); doc.roundedRect(M, y - 5, W - 2 * M, 17, 2, 2, 'S');
+    doc.setFontSize(8); cor(INK2); doc.setCharSpace(0.6); doc.text('PAGAMENTO POR TRANSFERÊNCIA BANCÁRIA', M + 4, y); doc.setCharSpace(0);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11); cor(INK); doc.text('IBAN ' + IBAN, M + 4, y + 6); doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5); cor(INK2); doc.text(`Titular: ${TITULAR} · Banco ${BANCO}` + (e.codigoXd ? ` · Na descrição indique: cliente n.º ${e.codigoXd}` : ''), M + 4, y + 10.5);
+    y += 22; doc.setFontSize(9); cor(INK2);
     const nota = `Valores em aberto na nossa conta corrente à data de ${dPT(TODAY())}, segundo os documentos emitidos. Se já efetuou o pagamento, agradecemos que nos envie o comprovativo e ignore este extrato. Para qualquer esclarecimento: ${CONTACTO.split(' · ').slice(0, 2).join(' ou ')}.`;
     doc.text(doc.splitTextToSize(nota, W - 2 * M), M, y);
     y += 14; doc.setFontSize(7.5); doc.text('Este extrato é informativo e não serve de fatura nem de recibo.', M, y);
