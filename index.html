@@ -361,6 +361,9 @@ const EURF=new Intl.NumberFormat('pt-PT',{style:'currency',currency:'EUR'});
 const eur=n=>EURF.format(+n||0);
 const eurK=n=>{n=+n||0;return n>=1000?(n/1000).toLocaleString('pt-PT',{maximumFractionDigits:1})+'k':String(Math.round(n))};
 const norm=s=>String(s??'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+/* pesquisa por palavras, em qualquer ordem, ignorando "e", "de", "&", pontuação: "freitas pereira e sousa" encontra "FREITAS & PEREIRA SOUSA LDA" */
+const PAL_VAZIAS=new Set(['e','de','da','do','das','dos','&','lda','unipessoal']);
+const temTudo=(txt,q)=>{const h=norm(txt).replace(/[^a-z0-9@.+]+/g,' '),ws=norm(q).split(/[^a-z0-9@.+]+/).filter(w=>w&&!PAL_VAZIAS.has(w));return !ws.length?h.includes(norm(q).trim()):ws.every(w=>h.includes(w))};
 const initials=n=>{const p=String(n||'?').replace(/[^\p{L}\p{N} ]/gu,' ').trim().split(/\s+/).filter(w=>w.length>2||/^\d/.test(w));return((p[0]||n||'?')[0]+(p[1]?p[1][0]:'')).toUpperCase()};
 const opts=o=>Array.isArray(o)?o.map(x=>[x,x]):Object.entries(o);
 const clone=o=>JSON.parse(JSON.stringify(o||{}));
@@ -675,7 +678,7 @@ function toolbarH(view,chips,newCol,newLabel,preset){
  const cur=S.f[view]??chips?.[0];
  return `<div class="tb"><div class="tbr"><label class="srch">${ic('search',18)}<input id="q-${view}" data-q="${view}" type="search" placeholder="Pesquisar" value="${esc(S.q[view]||'')}" autocomplete="off"></label>${newCol&&S.canWrite&&S.db?`<button class="btn pri" data-act="new" data-col="${newCol}" ${preset?`data-preset='${esc(JSON.stringify(preset))}'`:''}>${ic('plus',18)}<span>${newLabel||'Novo'}</span></button>`:''}</div>
  ${chips?`<div class="chips">${chips.map(c=>`<button class="chipb ${c===cur?'on':''}" data-act="chip" data-v="${view}" data-c="${esc(c)}">${esc(c)}</button>`).join('')}</div>`:''}</div>`}
-function match(view,d,keys){const q=norm(S.q[view]);if(!q)return true;const hay=norm(keys.map(k=>k==='entidade'?entName(d.entidade):Array.isArray(d[k])?d[k].join(' '):d[k]).join(' '));return q.split(/\s+/).every(w=>hay.includes(w))}
+function match(view,d,keys){const q=norm(S.q[view]);if(!q)return true;return temTudo(keys.map(k=>k==='entidade'?entName(d.entidade):Array.isArray(d[k])?d[k].join(' '):d[k]).join(' '),q)}
 
 /* ================= views ================= */
 const VIEWS={};
@@ -1074,7 +1077,7 @@ function cafeBoxH(){const eid=($('#f-entidade')?.value)||S.form?.ent0||'',hab=ha
  <div class="cat-l" id="cafe-list">${cafeListH()}</div></div>`}
 function cafeListH(){const eid=($('#f-entidade')?.value)||S.form?.ent0||'',hab=habituais(eid),pop=popular(),q=norm(S.cafeQ||''),L=S.form?.linhas||[];
  let c=S.cafeFam??(hab.size?'hab':'Café');if(c==='hab'&&!hab.size)c='Café';
- let items=cafeArts().filter(a=>q?norm([a.nome,a.ref,a.familia].join(' ')).includes(q):c==='hab'?hab.has(a.id):a.familia===c);
+ let items=cafeArts().filter(a=>q?temTudo([a.nome,a.ref,a.familia].join(' '),q):c==='hab'?hab.has(a.id):a.familia===c);
  items.sort((a,b)=>((c==='hab'?(hab.get(b.id)||0)-(hab.get(a.id)||0):0))||((pop.get(b.id)||0)-(pop.get(a.id)||0))||((b.foto?1:0)-(a.foto?1:0))||String(a.nome).localeCompare(String(b.nome),'pt'));
  const tot=items.length;items=items.slice(0,S.cafeLim||48);
  if(!tot)return `<p class="note" style="padding:10px 12px;margin:0">Sem artigos${q?' com "'+esc(S.cafeQ)+'"':''}. Use "+ Linha livre" para escrever à mão.</p>`;
@@ -1087,7 +1090,7 @@ function higBoxH(){const c=S.higCat||'';const cats=CAT_HIG.filter(k=>D('artigos'
  <div class="chips" style="margin:8px 0"><button type="button" class="chipb ${!c?'on':''}" data-act="higCat" data-c="">Tudo</button>${cats.map(k=>`<button type="button" class="chipb ${c===k?'on':''}" data-act="higCat" data-c="${esc(k)}">${esc(k)}</button>`).join('')}</div>
  <div class="hig-l" id="hig-list">${higListH()}</div></div>`}
 function higListH(){const c=S.higCat||'',q=norm(S.higQ||''),L=S.form?.linhas||[];
- const items=D('artigos').filter(a=>a.fornecedor===OXI&&a.ativo!==false&&(!c||a.categoria===c)&&(!q||norm([a.nome,a.ref,a.categoria,a.descricao].join(' ')).includes(q))).sort((a,b)=>(CAT_HIG.indexOf(a.categoria)-CAT_HIG.indexOf(b.categoria))||String(a.nome).localeCompare(String(b.nome),'pt'));
+ const items=D('artigos').filter(a=>a.fornecedor===OXI&&a.ativo!==false&&(!c||a.categoria===c)&&(!q||temTudo([a.nome,a.ref,a.categoria,a.descricao].join(' '),q))).sort((a,b)=>(CAT_HIG.indexOf(a.categoria)-CAT_HIG.indexOf(b.categoria))||String(a.nome).localeCompare(String(b.nome),'pt'));
  if(!items.length)return '<p class="note" style="padding:10px 12px;margin:0">Sem artigos de higiene com esta pesquisa.</p>';
  let cat='';return items.map(a=>{const n=L.filter(l=>l.artigo===a.id).reduce((s,l)=>s+(+l.qt||0),0);const h=!c&&!q&&a.categoria!==cat?`<div class="hig-c">${esc(a.categoria||'Outros')}</div>`:'';cat=a.categoria;
   return `${h}<div class="hig-r"><div class="hig-n"><b>${esc(a.nome)}</b><small>${esc(a.unidade||'')}${a.unidade?' · ':''}${eur(a.preco)}</small></div><button type="button" class="btn sm ${n?'gold':''}" data-act="higAdd" data-id="${a.id}">${n?`+1 · ${n} na encomenda`:'Adicionar'}</button></div>`}).join('')}
@@ -1104,11 +1107,11 @@ function addLinha(a){S.form.linhas.push(a?{artigo:a.id,nome:a.fornecedor===OXI?a
 function showPick(k,q){
  const box=document.getElementById('pk-'+k);if(!box)return;const nq=norm(q);
  if(!nq){box.hidden=true;return}
- const items=D('entidades').filter(e=>norm([e.nome,e.localidade,e.nif,e.contacto].join(' ')).includes(nq)).slice(0,8);
+ const items=D('entidades').filter(e=>temTudo([e.nome,e.localidade,e.nif,e.contacto,e.codigoXd].join(' '),nq)).slice(0,8);
  box.innerHTML=items.map(e=>`<button type="button" data-act="pick" data-k="${k}" data-id="${e.id}"><span>${esc(e.nome)}</span><small>${esc([ESTADOS[e.estado],e.localidade].filter(Boolean).join(' · '))}</small></button>`).join('')+(S.canWrite?`<button type="button" class="new" data-act="pickNew" data-k="${k}" data-c="${esc(q)}">+ Criar lead "${esc(q)}"</button>`:'');
  box.hidden=false}
 function showLnPick(q){const box=$('#pk-ln');if(!box)return;const nq=norm(q);if(!nq){box.hidden=true;return}
- const items=D('artigos').filter(a=>a.ativo!==false&&a.fornecedor!==OXI&&norm([a.nome,a.ref,a.familia].join(' ')).includes(nq)).slice(0,8);
+ const items=D('artigos').filter(a=>a.ativo!==false&&a.fornecedor!==OXI&&temTudo([a.nome,a.ref,a.familia].join(' '),nq)).slice(0,8);
  box.innerHTML=items.length?items.map(a=>`<button type="button" data-act="lnAdd" data-id="${a.id}"><span>${esc(a.nome)}</span><small>${esc([a.ref,a.familia,a.preco!=null?eur(a.preco):''].filter(Boolean).join(' · '))}</small></button>`).join(''):`<button type="button" data-act="lnFree" data-c="${esc(q)}"><span>Sem artigos no catálogo com "${esc(q)}"</span><small>Adicionar como linha livre</small></button>`;box.hidden=false}
 
 /* ================= Claude dentro do CRM ================= */
@@ -1144,11 +1147,11 @@ const TOOLS=()=>[
  {name:'pesquisar',description:'Lista registos de uma coleção do CRM, filtrados por texto (nome do cliente, descrição, estado…). Devolve até 40 registos compactos. Coleções: clientes (inclui leads e potenciais), visitas, tarefas, encomendas, propostas, avencas, pedidos, artigos, compras, pagamentos.',inputSchema:{type:'object',properties:{colecao:{type:'string',enum:['clientes','visitas','tarefas','encomendas','propostas','avencas','pedidos','artigos','compras','pagamentos']},texto:{type:'string',description:'Texto a procurar; vazio devolve os mais recentes'},limite:{type:'number'}},required:['colecao']},
   execute:(i)=>{const col=String(i.colecao)==='clientes'?'entidades':String(i.colecao);if(!S.data[col])throw new Error('Coleção desconhecida');const q=norm(i.texto||'');let rows=D(col).map(d=>compact(col,d));if(q)rows=rows.filter(r=>q.split(/\s+/).every(w=>norm(JSON.stringify(r)).includes(w)));rows.sort((a,b)=>String(b.data||b.proxima||b.criado||'').localeCompare(String(a.data||a.proxima||a.criado||'')));return{total:rows.length,registos:rows.slice(0,Math.min(+i.limite||40,40))}}},
  {name:'ficha_cliente',description:'Devolve a ficha completa de um cliente pelo nome (dados, últimas visitas, encomendas, propostas, avenças, pedidos abertos e valores por receber).',inputSchema:{type:'object',properties:{nome:{type:'string'}},required:['nome']},
-  execute:(i)=>{const q=norm(i.nome);const e=D('entidades').find(x=>norm(x.nome)===q)||D('entidades').find(x=>norm(x.nome).includes(q));if(!e)throw new Error('Cliente não encontrado');return histText(e)}},
+  execute:(i)=>{const q=norm(i.nome);const e=D('entidades').find(x=>norm(x.nome)===q)||D('entidades').find(x=>temTudo(x.nome,q));if(!e)throw new Error('Cliente não encontrado');return histText(e)}},
  {name:'agenda',description:'Devolve a agenda de um dia (tarefas, visitas, pedidos agendados, avenças, follow-ups) e o que está em atraso. Data em AAAA-MM-DD; sem data usa hoje.',inputSchema:{type:'object',properties:{data:{type:'string'},equipa:{type:'boolean',description:'true para toda a equipa, false só o utilizador'}}},
   execute:(i)=>{const d=/^\d{4}-\d{2}-\d{2}$/.test(String(i.data||''))?String(i.data):TODAY();const q=i.equipa?'todos':'eu';return{data:d,itens:dayItems(d,q).map(x=>({tipo:x.k,hora:x.time,titulo:x.title,detalhe:x.sub,feito:x.done})),em_atraso:overdue(q).map(x=>({tipo:x.k,desde:x.time,titulo:x.title})),atencao:attention().map(a=>a.t+' — '+a.s)}}},
  {name:'criar_tarefa',description:'Cria uma tarefa na agenda do utilizador. Usa quando o utilizador pedir para lembrar ou agendar algo.',inputSchema:{type:'object',properties:{titulo:{type:'string'},data:{type:'string',description:'AAAA-MM-DD'},hora:{type:'string',description:'HH:MM opcional'},cliente:{type:'string',description:'nome do cliente, opcional'}},required:['titulo','data']},
-  execute:async(i)=>{if(!S.canWrite||!S.db)throw new Error('Sem permissão para criar tarefas');let eid='';if(i.cliente){const q=norm(i.cliente);const e=D('entidades').find(x=>norm(x.nome).includes(q));if(e)eid=e.id}const id=await save('tarefas',null,{titulo:String(i.titulo),data:String(i.data).slice(0,10),hora:String(i.hora||''),resp:S.uid||'',prioridade:'normal',entidade:eid,feito:false,notas:''});if(!id)throw new Error('Não foi possível criar');return 'Tarefa criada'+(eid?' associada a '+entName(eid):'')}},
+  execute:async(i)=>{if(!S.canWrite||!S.db)throw new Error('Sem permissão para criar tarefas');let eid='';if(i.cliente){const q=norm(i.cliente);const e=D('entidades').find(x=>norm(x.nome)===q)||D('entidades').find(x=>temTudo(x.nome,q));if(e)eid=e.id}const id=await save('tarefas',null,{titulo:String(i.titulo),data:String(i.data).slice(0,10),hora:String(i.hora||''),resp:S.uid||'',prioridade:'normal',entidade:eid,feito:false,notas:''});if(!id)throw new Error('Não foi possível criar');return 'Tarefa criada'+(eid?' associada a '+entName(eid):'')}},
 ];
 async function chatSend(text){
  text=String(text||'').trim();if(!text||S.chatBusy||!S.sample)return;
