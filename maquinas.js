@@ -229,15 +229,17 @@ window.MAQ_INIT = function () {
     /* resumo de todas as máquinas: hoje, mês e ano (só para quem vê valores) */
     const resumo = S.verValores ? (() => {
       const todas = D('maquinas');
+      const melhor = {};
       const bloco = (k, t) => {
         let best = null;
         const z = todas.reduce((a, m) => { const r = rent(m.id, k); a.fat += r.fat; a.troco += r.troco; a.cus += r.prod + r.pecas;
           const rs = r.vendas / 1.23 - r.prod - r.pecas; if (k !== 'dia' && r.fat > 0 && (!best || rs > best.rs)) best = { m, rs, mg: r.vendas > 0 ? Math.round(rs / (r.vendas / 1.23) * 100) : null }; return a; }, { fat: 0, troco: 0, cus: 0 });
         const liq = (z.fat - z.troco) / 1.23, res = liq - z.cus, mg = liq > 0 ? Math.round(res / liq * 100) : null;
         const ln = 'display:block;margin-top:2px';
-        return `<div><span>${t}</span><b>${eur(z.fat)}</b><small class="note" style="${ln}">${z.troco ? `troco −${eur(z.troco)} · ` : ''}sem IVA ${eur(liq)}</small>${k !== 'dia' ? `<small class="note" style="${ln}">Rentabilidade <b style="color:${res < 0 ? 'var(--bad)' : 'inherit'}">${eur(res)}</b>${mg != null ? ` · margem ${mg}%` : ''}</small>${best ? `<button class="lnk" style="padding:0;margin-top:4px;text-align:left;font-size:12px" data-act="maqOpen" data-id="${best.m.id}">★ Melhor: máquina ${esc(best.m.numero)}${best.m.entidade ? ' · ' + esc(local(best.m)) : ''} · ${eur(best.rs)}${best.mg != null ? ` (${best.mg}%)` : ''}</button>` : ''}` : ''}</div>`;
+        if (k !== 'dia') melhor[k] = best;
+        return `<div><span>${t}</span><b>${eur(z.fat)}</b><small class="note" style="${ln}">${z.troco ? `troco −${eur(z.troco)} · ` : ''}sem IVA ${eur(liq)}</small>${k !== 'dia' ? `<small class="note" style="${ln}">Rentabilidade <b style="color:${res < 0 ? 'var(--bad)' : 'inherit'}">${eur(res)}</b>${mg != null ? ` · margem ${mg}%` : ''}</small>` : ''}</div>`;
       };
-      return `<div class="panel" style="margin:0 0 12px"><div class="ph"><h2>Faturado nas máquinas</h2></div><div class="pb"><div class="mini">${bloco('dia', 'Hoje')}${bloco('mes', 'Este mês')}${bloco('ano', 'Este ano')}</div>
+      return `<div class="panel" style="margin:0 0 12px"><div class="ph"><h2>Faturado nas máquinas</h2></div><div class="pb"><div class="mini">${bloco('dia', 'Hoje')}${bloco('mes', 'Este mês')}${bloco('ano', 'Este ano')}${(() => { const lin = (k, t) => { const b = melhor[k]; if (!b) return `<small class="note" style="display:block;margin-top:6px">${t}: —</small>`; const nm = b.m.entidade ? local(b.m) : ''; return `<button class="lnk" style="display:block;padding:0;margin-top:6px;text-align:left" data-act="maqOpen" data-id="${b.m.id}"><small class="note" style="display:block">${t}</small><b style="font-size:18px">#${esc(b.m.numero)} · ${eur(b.rs)}</b>${b.mg != null ? ` <small class="note">${b.mg}%</small>` : ''}${nm ? `<small class="note" style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%">${esc(nm)}</small>` : ''}</button>`; }; return `<div><span>★ Melhor máquina</span>${lin('mes', 'Este mês')}${lin('ano', 'Este ano')}</div>`; })()}</div>
         <p class="note" style="margin:8px 0 0">Total do cofre de todas as máquinas, com IVA. Rentabilidade = faturado sem IVA (23%), descontado o troco e o custo dos produtos e peças. A melhor máquina é a de maior rentabilidade no período; toque para a abrir.</p></div></div>`;
     })() : '';
     const sum = `<p class="note" style="margin:0 0 10px"><b>${L.length}</b> máquina${L.length === 1 ? '' : 's'}${tot ? ` · faturado <b>${eur(tot.fat)}</b> · resultado <b>${eur(tot.res)}</b>` : ''}. Leia o QR colado na máquina para abrir a ficha diretamente.</p>`;
