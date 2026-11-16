@@ -1074,8 +1074,11 @@ function habituais(eid){const m=new Map();if(!eid)return m;
 /* último preço praticado ao cliente nos últimos 12 meses (faturas do XD + encomendas do CRM), líquido de desconto e sem IVA */
 function ultPrecos(eid){if(!eid)return new Map();const k=eid+'|'+(S.form?.id||'');if(S._ult&&S._ult.k===k&&Date.now()-S._ult.t<60000)return S._ult.m;
  const lim=new Date(Date.now()-365*864e5).toISOString().slice(0,10),m=new Map(),put=(id,p,d)=>{if(!id||!(p>0)||!d)return;const o=m.get(id);if(!o||d>o.d)m.set(id,{p:Math.round(p*100)/100,d})};
- const porRef=new Map(D('artigos').filter(a=>a.ref).map(a=>[String(a.ref),a.id]));
- D('xd_documentos').forEach(x=>{if(x.entidade!==eid||!/^(FT|FR|FS|VD)$/.test(x.tipo||'')||String(x.data||'')<lim)return;(x.linhas||[]).forEach(l=>put(porRef.get(String(l.ref||'')),(+l.preco||0)*(1-(+l.desc||0)/100),String(x.data).slice(0,10)))});
+ const porRef=new Map(D('artigos').filter(a=>a.ref).map(a=>[String(a.ref),a]));
+ /* no XD alguns artigos (copos, paletinas) foram faturados à unidade; no CRM vendem-se ao kit (manga de 50, pack de 100): converter para o preço do kit */
+ const kit=a=>{const m=String(a.nome||'').match(/(\d+)\s*UN\b/i)||String(a.nome_maq||'').match(/(?:pack|manga|caixa|emb\.?|embalagem)\s*(?:de\s*)?(\d+)/i)||String(a.nome||'').match(/EMB\.?\s*(\d+)/i);return m?+m[1]:1};
+ const ajusta=(a,p)=>{const t=+a.preco||0;if(!t)return p;const ok=v=>v/t>=0.3&&v/t<=3;if(ok(p))return p;const k=kit(a);if(k>1&&ok(p*k))return p*k;return 0};
+ D('xd_documentos').forEach(x=>{if(x.entidade!==eid||!/^(FT|FR|FS|VD)$/.test(x.tipo||'')||String(x.data||'')<lim)return;(x.linhas||[]).forEach(l=>{const a=porRef.get(String(l.ref||''));if(a)put(a.id,ajusta(a,(+l.preco||0)*(1-(+l.desc||0)/100)),String(x.data).slice(0,10))})});
  D('encomendas').forEach(x=>{if(x.entidade!==eid||x.estado==='Cancelada'||x.id===S.form?.id)return;const d=String(x.data||x.criado||'').slice(0,10);if(d<lim)return;(x.linhas||[]).forEach(l=>put(l.artigo,(+l.preco||0)*(1-(+l.desc||0)/100),d))});
  S._ult={k,t:Date.now(),m};return m}
 const formEnt=()=>($('#f-entidade')?.value)||S.form?.ent0||S.form?.vals?.entidade||'';
