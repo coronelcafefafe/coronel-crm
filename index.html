@@ -922,8 +922,14 @@ VIEWS.pedidos=()=>loadingOr(()=>genList('pedidos','pedidos',['Por tratar','Todos
 const porFaturar=d=>!d.fornecedor&&!d.faturaXd&&d.estado!=='Faturada'&&d.estado!=='Cancelada'&&!d.exemplo;
 const ftPode=d=>{const e=ent(d.entidade)||{};return !!(e.semNif||e.codigoXd)};
 function ftLoteBar(){if(S.f.encomendas!=='Por faturar')return'';const L=D('encomendas').filter(porFaturar);if(!L.length)return'';const t=L.reduce((s,x)=>s+docTotal(x),0);
- return `<div class="panel" style="margin-bottom:12px"><div class="ph"><h2>Por faturar</h2><span class="note">${L.length} encomenda${L.length===1?'':'s'} · ${eur(t)}</span><span class="grow"></span><button class="btn sm gold" data-act="ftLote">Faturar no XD…</button></div><p class="note" style="margin:0 16px 12px">Escolha as encomendas e a app tira as faturas uma a uma, enviando cada uma ao cliente por email.</p></div>`}
-async function ftCall(id){const r=await fetch(CFG.url+'/functions/v1/xd-soba',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?.access_token||''),apikey:CFG.anonKey},body:JSON.stringify({acao:'ft_encomenda',id})});const j=await r.json().catch(()=>({}));return{ok:r.ok&&j.ok,...j,error:j.error||(!r.ok?'erro '+r.status:'')}}
+ return `<div class="panel" style="margin-bottom:12px"><div class="ph"><h2>Por faturar</h2><span class="note">${L.length} encomenda${L.length===1?'':'s'} · ${eur(t)}</span><span class="grow"></span><button class="btn sm gold" data-act="ftLote">Faturar no XD…</button></div><p class="note" style="margin:0 16px 12px">Escolha as encomendas e a app tira as faturas uma a uma, com ou sem email. As que não têm stock de tudo faturam-se à parte.</p></div>`}
+const ftMail=x=>{const e=ent(x.entidade)||{};return String(e.email||'').split(/[;,\s]+/).find(v=>/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v))||''};
+// linhas a faturar com o stock do XD (usado: stock já reservado por outras encomendas do mesmo lote)
+function ftItens(x,usado){const ja=new Map(usado||[]);return (x.linhas||[]).map((l,i)=>({l,i})).filter(({l})=>+l.qt>0&&!l.forn).map(({l,i})=>{const a=l.artigo?S.data.artigos.get(l.artigo):null,qt=+l.qt,st=stockN(a);let fat=qt;
+ if(st!=null){const livre=Math.max(0,st-(ja.get(a.id)||0));fat=Math.min(qt,Math.floor(livre*1000)/1000);ja.set(a.id,(ja.get(a.id)||0)+fat)}
+ return{i,l,a,nome:l.nome||a?.nome||'Artigo',qt,st,fat}})}
+function ftSumH(){const F=S.ft;if(!F)return'';const t=totais(F.R.map(r=>({...r.l,qt:r.fat}))),f=F.R.filter(r=>r.fat<r.qt).length;return `A faturar agora: <b class="num">${eur(t.total)}</b> com IVA${f?` · <b>${f} linha${f===1?'':'s'}</b> fica${f===1?'':'m'} por entregar numa encomenda nova`:''}`}
+async function ftCall(id,extra){const r=await fetch(CFG.url+'/functions/v1/xd-soba',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?.access_token||''),apikey:CFG.anonKey},body:JSON.stringify({acao:'ft_encomenda',id,...(extra||{})})});const j=await r.json().catch(()=>({}));return{ok:r.ok&&j.ok,...j,error:j.error||(!r.ok?'erro '+r.status:'')}}
 /* caixa do Pimenta: dinheiro e cheques que um colaborador recebeu e ainda não entregou ao André */
 const ehAdminU=id=>S.data.equipa.get(id)?.papel==='admin';
 const caixaPim=()=>D('pagamentos').filter(x=>/^(Numerário|Cheque)$/.test(x.metodo||'')&&x.estado!=='receber'&&!x.caixaBaixa&&x.criadoPor&&!ehAdminU(x.criadoPor)&&(x.data||'')>='2026-11-16').sort(byDateDesc);
@@ -1257,24 +1263,44 @@ const ACT={
  higCat:d=>{S.higCat=d.c||'';redrawLinhas()},
  cafeFam:d=>{S.cafeFam=d.c;S.cafeQ='';S.cafeLim=48;redrawLinhas()},
  cafeMais:()=>{S.cafeLim=(S.cafeLim||48)+48;const cl=$('#cafe-list');if(cl)cl.innerHTML=cafeListH()},
- ftEmitir:async(d,b)=>{const x=S.data.encomendas.get(d.id);if(!x)return;const L=(x.linhas||[]).filter(l=>+l.qt>0&&!l.forn);const t=totais(L);const e=ent(x.entidade)||{};
+ ftEmitir:(d)=>{const x=S.data.encomendas.get(d.id);if(!x)return;const e=ent(x.entidade)||{};
   if(!e.semNif&&!e.codigoXd){toast('O cliente não tem n.º do XD: crie-o primeiro no XD.');return}
-  if(!confirm(`Emitir no XD a FATURA de ${entName(x.entidade)}?\n\n${L.length} linha${L.length===1?'':'s'} · total ${eur(t.total??(t.base+t.iva))} (com IVA)\nVai por email ao cliente${String(e.email||'').includes('@')?' ('+String(e.email).split(/[;,\s]+/)[0]+')':' (sem email: vai para geral@)'}.\n\nSe alterou a encomenda, guarde primeiro.\nUm documento certificado não se pode apagar.`))return;
+  const R=ftItens(x);if(!R.length){toast('A encomenda não tem linhas para faturar.');return}
+  const mail=ftMail(x),falta=R.filter(r=>r.fat<r.qt).length;S.ft={id:x.id,R};
+  openSheet(`<div class="sh"><h2>Faturar · ${esc(entName(x.entidade))}</h2><button class="ib" data-act="close" aria-label="Fechar">${ic('x')}</button></div><div class="sb">
+  <p class="note" style="margin:0 0 10px">${falta?`<b style="color:var(--bad)">${falta} linha${falta===1?'':'s'} sem stock suficiente.</b> Fatura-se o que há; o que faltar fica numa encomenda nova, por entregar.`:'Há stock de tudo. Confirme as quantidades a faturar agora.'}</p>
+  <div id="ftq">${R.map((r,k)=>`<div class="row" style="gap:10px;align-items:center"><span class="rt"><span class="r1">${esc(r.nome)}</span><span class="r2">Pedido ${stockF(r.qt)} · ${r.st==null?'stock: —':`<span style="${r.st<r.qt?'color:var(--bad)':''}">stock: ${stockF(r.st)}</span>`}</span></span><input class="inp num" type="number" inputmode="decimal" min="0" max="${r.qt}" step="any" data-ftq="${k}" value="${r.fat}" style="width:84px;text-align:right"></div>`).join('')}</div>
+  <p class="note" id="ft-sum" style="margin:10px 0 0">${ftSumH()}</p>
+  <div class="row" style="flex-direction:column;align-items:stretch;gap:6px;margin-top:12px">
+   <label style="display:flex;gap:8px;align-items:center"><input type="radio" name="ftmodo" value="email" ${mail?'checked':'disabled'}> Enviar por email ao cliente${mail?` <span class="note">(${esc(mail)})</span>`:' <span class="note">(sem email na ficha)</span>'}</label>
+   <label style="display:flex;gap:8px;align-items:center"><input type="radio" name="ftmodo" value="pdf" ${mail?'':'checked'}> Só imprimir (abre o PDF, não envia)</label></div>
+  <p class="note" id="ft-msg" style="margin:10px 0 0">Se alterou a encomenda, guarde primeiro. Um documento certificado não se pode apagar.</p></div>
+  <div class="sf"><button class="btn" data-act="close" type="button">Cancelar</button><span class="grow"></span><button class="btn gold" type="button" data-act="ftGo" id="ft-b">Emitir fatura</button></div>`)},
+ ftGo:async(d,b)=>{const F=S.ft;if(!F)return;const x=S.data.encomendas.get(F.id);if(!x)return;
+  const linhas=F.R.map(r=>({i:r.i,qt:r.fat}));if(!linhas.some(l=>l.qt>0)){$('#ft-msg').textContent='Ponha pelo menos uma quantidade para faturar.';return}
+  const email=(document.querySelector('[name=ftmodo]:checked')||{}).value==='email';
   b.disabled=true;b.textContent='A emitir…';
-  try{const r=await fetch(CFG.url+'/functions/v1/xd-soba',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?.access_token||''),apikey:CFG.anonKey},body:JSON.stringify({acao:'ft_encomenda',id:x.id})});const j=await r.json().catch(()=>({}));
-   if(!r.ok||!j.ok){b.disabled=false;b.textContent='Faturar no XD';alert('A fatura não foi emitida:\n\n'+(j.error||('erro '+r.status)));return}
-   x.faturaXd=j.identificador;x.estado='Faturada';toast(`${j.identificador} emitida${j.email==='enviado'?' e enviada ao cliente':j.email==='sem email'?' · cliente sem email: enviada para geral@':' · email não seguiu ('+j.email+')'}`);closeSheet();render()}
-  catch(_){b.disabled=false;b.textContent='Faturar no XD';toast('Sem ligação. Tente outra vez.')}},
- ftLote:()=>{const L=D('encomendas').filter(porFaturar).sort((a,b)=>(a.data||'').localeCompare(b.data||''));
-  openSheet(`<div class="sh"><h2>Faturar no XD</h2><button class="ib" data-act="close" aria-label="Fechar">${ic('x')}</button></div><div class="sb"><p class="note" style="margin:0 0 10px">Confirme as linhas e os preços de cada encomenda antes de faturar. Cada fatura vai por email ao cliente.</p>
-  <div id="ftl">${L.map(x=>{const ok=ftPode(x),e=ent(x.entidade)||{};return `<label class="row" style="cursor:${ok?'pointer':'default'};gap:10px"><input type="checkbox" data-ftl="${x.id}" ${ok?'checked':'disabled'}><span class="rt"><span class="r1">${esc(entName(x.entidade))}</span><span class="r2">${esc([fD(x.data),x.estado||'Nova',ok?(String(e.email||'').includes('@')?'email: '+String(e.email).split(/[;,\s]+/)[0]:'sem email (vai para geral@)'):'sem n.º do XD: criar o cliente no XD'].join(' · '))}</span></span><span class="rr"><b class="num">${eur(docTotal(x))}</b><span class="note" id="ftr-${x.id}"></span></span></label>`}).join('')}</div>
+  try{const j=await ftCall(x.id,{linhas,email});
+   if(!j.ok){b.disabled=false;b.textContent='Emitir fatura';$('#ft-msg').innerHTML=`<b style="color:var(--bad)">A fatura não foi emitida:</b> ${esc(j.error)}`;return}
+   x.faturaXd=j.identificador;x.estado='Faturada';S.ft=null;render();
+   openSheet(`<div class="sh"><h2>${esc(j.identificador)} emitida</h2><button class="ib" data-act="close" aria-label="Fechar">${ic('x')}</button></div><div class="sb">
+   <p style="margin:0 0 10px">${esc(entName(x.entidade))} · <b class="num">${eur(j.total)}</b></p>
+   <p class="note" style="margin:0 0 10px">${j.email==='enviado'?'Enviada por email ao cliente (com cópia para geral@).':j.email==='não enviado'?'Não foi enviada por email: abra o PDF para imprimir.':j.email==='sem email'?'O cliente não tem email: foi para geral@.':'O email não seguiu ('+esc(j.email)+'): abra o PDF para imprimir ou enviar.'}</p>
+   ${j.resto?`<p class="note" style="margin:0"><b>${j.resto} linha${j.resto===1?'':'s'} por entregar</b> ficou${j.resto===1?'':'ram'} numa encomenda nova (estado Nova), na lista de encomendas.</p>`:''}</div>
+   <div class="sf"><button class="btn" data-act="close" type="button">Fechar</button><span class="grow"></span><button class="btn ${j.email==='enviado'?'':'gold'}" data-act="ftPdf" data-id="${x.id}" type="button">${ic('doc',16)}Abrir PDF para imprimir</button></div>`)}
+  catch(_){b.disabled=false;b.textContent='Emitir fatura';toast('Sem ligação. Tente outra vez.')}},
+ ftLote:()=>{const L=D('encomendas').filter(porFaturar).sort((a,b)=>(a.data||'').localeCompare(b.data||''));const usado=new Map();
+  const info=L.map(x=>{const ok=ftPode(x);const R=ok?ftItens(x,usado):[];const falta=R.filter(r=>r.fat<r.qt);if(ok&&!falta.length)R.forEach(r=>{if(r.a)usado.set(r.a.id,(usado.get(r.a.id)||0)+r.qt)});return{x,ok,falta}});
+  openSheet(`<div class="sh"><h2>Faturar no XD</h2><button class="ib" data-act="close" aria-label="Fechar">${ic('x')}</button></div><div class="sb"><p class="note" style="margin:0 0 10px">Confirme as linhas e os preços de cada encomenda antes de faturar. As que não têm stock de tudo faturam-se uma a uma (toque em “faturar à parte”).</p>
+  <div id="ftl">${info.map(({x,ok,falta})=>{const e=ent(x.entidade)||{},m=ftMail(x),pode=ok&&!falta.length;return `<div class="row" style="gap:10px"><input type="checkbox" data-ftl="${x.id}" ${pode?'checked':'disabled'}><span class="rt"><span class="r1">${esc(entName(x.entidade))}</span><span class="r2">${!ok?'sem n.º do XD: criar o cliente no XD':falta.length?`<span style="color:var(--bad)">falta stock: ${esc(falta.map(r=>r.nome).slice(0,2).join(', '))}${falta.length>2?'…':''}</span> · <button type="button" class="btn sm" data-act="ftEmitir" data-id="${x.id}">faturar à parte</button>`:esc([fD(x.data),x.estado||'Nova',m?'email: '+m:'sem email'].join(' · '))}</span></span><span class="rr"><b class="num">${eur(docTotal(x))}</b><span class="note" id="ftr-${x.id}"></span></span></div>`}).join('')}</div>
+  <label style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="ftl-mail" checked> Enviar cada fatura por email ao cliente (desligado: só emite, para imprimir depois)</label>
   <p class="note" id="ftl-msg" style="margin:10px 0 0"></p></div><div class="sf"><button class="btn" data-act="close" type="button">Fechar</button><span class="grow"></span><button class="btn gold" type="button" data-act="ftLoteGo" id="ftl-b">Faturar selecionadas</button></div>`)},
  ftLoteGo:async(d,b)=>{const ids=[...document.querySelectorAll('[data-ftl]:checked')].map(x=>x.dataset.ftl);if(!ids.length){$('#ftl-msg').textContent='Escolha pelo menos uma encomenda.';return}
-  const tot=ids.reduce((s,i)=>s+docTotal(S.data.encomendas.get(i)||{}),0);
-  if(!confirm(`Emitir ${ids.length} fatura${ids.length===1?'':'s'} no XD, no total de ${eur(tot)}?\n\nCada fatura vai por email ao cliente.\nOs documentos certificados não se podem apagar.`))return;
-  b.disabled=true;document.querySelectorAll('[data-ftl]').forEach(x=>x.disabled=true);let ok=0,ko=0;
+  const tot=ids.reduce((s,i)=>s+docTotal(S.data.encomendas.get(i)||{}),0),email=!!$('#ftl-mail')?.checked;
+  if(!confirm(`Emitir ${ids.length} fatura${ids.length===1?'':'s'} no XD, no total de ${eur(tot)}?\n\n${email?'Cada fatura vai por email ao cliente.':'Não vão por email: abra cada PDF para imprimir.'}\nOs documentos certificados não se podem apagar.`))return;
+  b.disabled=true;document.querySelectorAll('[data-ftl],#ftl-mail').forEach(x=>x.disabled=true);let ok=0,ko=0;
   for(let k=0;k<ids.length;k++){const id=ids[k],cel=$('#ftr-'+id);b.textContent=`A faturar ${k+1} de ${ids.length}…`;if(cel)cel.textContent=' · a emitir…';
-   try{const j=await ftCall(id);if(j.ok){ok++;const x=S.data.encomendas.get(id);if(x){x.faturaXd=j.identificador;x.estado='Faturada'}if(cel)cel.innerHTML=` · <b style="color:var(--ok,#1a7f37)">${esc(j.identificador)}</b>${j.email==='enviado'?' ✉️':''}`}else{ko++;if(cel)cel.innerHTML=` · <span style="color:var(--bad)">${esc(j.error)}</span>`}}
+   try{const j=await ftCall(id,{email});if(j.ok){ok++;const x=S.data.encomendas.get(id);if(x){x.faturaXd=j.identificador;x.estado='Faturada'}if(cel)cel.innerHTML=` · <b style="color:var(--ok,#1a7f37)">${esc(j.identificador)}</b>${j.email==='enviado'?' ✉️':` <button type="button" class="btn sm" data-act="ftPdf" data-id="${id}">PDF</button>`}`}else{ko++;if(cel)cel.innerHTML=` · <span style="color:var(--bad)">${esc(j.error)}</span>`}}
    catch(_){ko++;if(cel)cel.innerHTML=' · <span style="color:var(--bad)">sem ligação</span>'}}
   b.textContent='Feito';$('#ftl-msg').innerHTML=`<b>${ok}</b> fatura${ok===1?'':'s'} emitida${ok===1?'':'s'}${ko?` · <b style="color:var(--bad)">${ko} com erro</b> (ver a mensagem em cada uma)`:''}.`;render()},
  ftPdf:async d=>{toast('A abrir a fatura…');try{const r=await fetch(CFG.url+'/functions/v1/xd-soba',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?.access_token||''),apikey:CFG.anonKey},body:JSON.stringify({acao:'ft_pdf',id:d.id})});if(!r.ok){toast('Não foi possível abrir o PDF');return}const u=URL.createObjectURL(await r.blob());window.open(u,'_blank')||(location.href=u)}catch(_){toast('Sem ligação')}},
@@ -1344,6 +1370,7 @@ document.addEventListener('input',e=>{
  if(t.dataset.q){S.q[t.dataset.q]=t.value;S.lim[t.dataset.q]=60;render();return}
  if(t.dataset.pick){$('#f-'+t.dataset.pick).value='';showPick(t.dataset.pick,t.value);return}
  if(t.dataset.lnpick){showLnPick(t.value);return}
+ if(t.dataset.ftq!=null&&S.ft){const r=S.ft.R[+t.dataset.ftq];if(r){r.fat=Math.max(0,Math.min(r.qt,+t.value||0));const o=$('#ft-sum');if(o)o.innerHTML=ftSumH()}return}
  if(t.dataset.higq){S.higQ=t.value;const hl=$('#hig-list');if(hl)hl.innerHTML=higListH();return}
  if(t.dataset.cafeq){S.cafeQ=t.value;S.cafeLim=48;const cl=$('#cafe-list');if(cl)cl.innerHTML=cafeListH();return}
  if(t.dataset.li!==undefined&&S.form){const i=+t.dataset.li,f=t.dataset.f,L=S.form.linhas;if(!L[i])return;L[i][f]=['qt','preco','desc'].includes(f)?(t.value===''?0:parseFloat(t.value)):t.value;const lt=$('#lt-'+i);if(lt)lt.textContent=eur(lineBase(L[i]));$('#ln-tot').innerHTML=totH(totais(L));return}
