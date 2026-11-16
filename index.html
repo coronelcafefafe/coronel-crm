@@ -264,6 +264,8 @@ table.tt{width:100%;border-collapse:collapse;font-size:13.5px}
 .cat-i img{width:100%;height:100%;object-fit:contain;padding:6px;box-sizing:border-box}
 .cat-n{font-size:13px;font-weight:500;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:2.6em}
 .cat-p{font-size:12px;color:var(--ink-3)}
+.cat-u{display:block;font-size:11px;color:var(--ink-3);margin-top:1px}.cat-u.lo,.ln-u.lo{color:var(--warn)}
+.ln-u{display:inline-block;margin:4px 0 0;padding:0;border:0;background:none;font-size:12px;color:var(--ink-3);text-decoration:underline;text-underline-offset:2px;cursor:pointer}
 .cat-c .btn{margin-top:auto;width:100%;justify-content:center}
 .hig{margin-top:8px;border:1px solid var(--line);border-radius:11px;padding:10px;background:var(--surface)}
 .hig-l{max-height:360px;overflow-y:auto;border-top:1px solid var(--line);margin:0 -10px -10px}
@@ -1042,8 +1044,8 @@ async function saveForm(btn){
 
 /* --- linhas de encomenda/proposta --- */
 function linhasH(){
- const L=S.form?.linhas||[],t=totais(L),ln=(l,i)=>`<div class="ln"><input class="ln-n inp" data-li="${i}" data-f="nome" value="${esc(l.nome)}" aria-label="Descrição do artigo">
-  <div class="ln-g"><label>Qt.<input type="number" step="0.01" inputmode="decimal" data-li="${i}" data-f="qt" value="${esc(l.qt)}"></label><label>Preço<input type="number" step="0.01" inputmode="decimal" data-li="${i}" data-f="preco" value="${esc(l.preco)}"></label><label>Desc. %<input type="number" step="0.5" inputmode="decimal" data-li="${i}" data-f="desc" value="${esc(l.desc||0)}"></label><label>IVA<select data-li="${i}" data-f="iva">${opts(IVAS).map(([k,v])=>`<option value="${k}" ${String(l.iva)===k?'selected':''}>${v}</option>`).join('')}</select></label><span class="ln-t num" id="lt-${i}">${eur(lineBase(l))}</span><button type="button" class="ib" data-act="lnDel" data-i="${i}" aria-label="Remover linha">${ic('x',18)}</button></div></div>`;
+ const L=S.form?.linhas||[],t=totais(L),ult=ultPrecos(formEnt()),ln=(l,i)=>`<div class="ln"><input class="ln-n inp" data-li="${i}" data-f="nome" value="${esc(l.nome)}" aria-label="Descrição do artigo">
+  <div class="ln-g"><label>Qt.<input type="number" step="0.01" inputmode="decimal" data-li="${i}" data-f="qt" value="${esc(l.qt)}"></label><label>Preço<input type="number" step="0.01" inputmode="decimal" data-li="${i}" data-f="preco" value="${esc(l.preco)}"></label><label>Desc. %<input type="number" step="0.5" inputmode="decimal" data-li="${i}" data-f="desc" value="${esc(l.desc||0)}"></label><label>IVA<select data-li="${i}" data-f="iva">${opts(IVAS).map(([k,v])=>`<option value="${k}" ${String(l.iva)===k?'selected':''}>${v}</option>`).join('')}</select></label><span class="ln-t num" id="lt-${i}">${eur(lineBase(l))}</span><button type="button" class="ib" data-act="lnDel" data-i="${i}" aria-label="Remover linha">${ic('x',18)}</button></div>${(u=>u&&Math.abs(u.p-(+l.preco||0))>=0.005?`<button type="button" class="ln-u${u.p<(+l.preco||0)?' lo':''}" data-act="lnUlt" data-i="${i}">últ. ${eur(u.p)} · ${dmU(u.d)} — usar este preço</button>`:'')(l.artigo&&ult.get(l.artigo))}</div>`;
  const ix=L.map((l,i)=>i),hi=ix.filter(i=>isHig(L[i])),ca=ix.filter(i=>!isHig(L[i]));
  const doc=S.form?.col==='encomendas'||S.form?.col==='propostas';
  const sub=(I,tit,note)=>`<div class="ln-grp"><b>${tit}</b><span class="note">${note}</span><span class="num">${eur(totais(I.map(i=>L[i])).base)} s/ IVA</span></div>`;
@@ -1069,20 +1071,29 @@ function habituais(eid){const m=new Map();if(!eid)return m;
  const porRef=new Map(cafeArts().filter(a=>a.ref).map(a=>[String(a.ref),a.id]));
  D('xd_documentos').forEach(d=>{if(d.entidade!==eid)return;(d.linhas||[]).forEach(l=>{const id=porRef.get(String(l.ref||''));if(id)m.set(id,(m.get(id)||0)+1)})});
  return m}
+/* último preço praticado ao cliente nos últimos 12 meses (faturas do XD + encomendas do CRM), líquido de desconto e sem IVA */
+function ultPrecos(eid){if(!eid)return new Map();const k=eid+'|'+(S.form?.id||'');if(S._ult&&S._ult.k===k&&Date.now()-S._ult.t<60000)return S._ult.m;
+ const lim=new Date(Date.now()-365*864e5).toISOString().slice(0,10),m=new Map(),put=(id,p,d)=>{if(!id||!(p>0)||!d)return;const o=m.get(id);if(!o||d>o.d)m.set(id,{p:Math.round(p*100)/100,d})};
+ const porRef=new Map(D('artigos').filter(a=>a.ref).map(a=>[String(a.ref),a.id]));
+ D('xd_documentos').forEach(x=>{if(x.entidade!==eid||!/^(FT|FR|FS|VD)$/.test(x.tipo||'')||String(x.data||'')<lim)return;(x.linhas||[]).forEach(l=>put(porRef.get(String(l.ref||'')),(+l.preco||0)*(1-(+l.desc||0)/100),String(x.data).slice(0,10)))});
+ D('encomendas').forEach(x=>{if(x.entidade!==eid||x.estado==='Cancelada'||x.id===S.form?.id)return;const d=String(x.data||x.criado||'').slice(0,10);if(d<lim)return;(x.linhas||[]).forEach(l=>put(l.artigo,(+l.preco||0)*(1-(+l.desc||0)/100),d))});
+ S._ult={k,t:Date.now(),m};return m}
+const formEnt=()=>($('#f-entidade')?.value)||S.form?.ent0||S.form?.vals?.entidade||'';
+const dmU=d=>d?d.slice(8,10)+'/'+d.slice(5,7):'';
 function popular(){const now=Date.now();if(S._pop&&now-S._pop.t<60000)return S._pop.m;const m=new Map();D('encomendas').forEach(x=>(x.linhas||[]).forEach(l=>{if(l.artigo)m.set(l.artigo,(m.get(l.artigo)||0)+1)}));S._pop={t:now,m};return m}
 function cafeBoxH(){const eid=($('#f-entidade')?.value)||S.form?.ent0||'',hab=habituais(eid);
  const fams=CAFE_FAM.filter(f=>cafeArts().some(a=>a.familia===f));let c=S.cafeFam??(hab.size?'hab':'Café');if(c==='hab'&&!hab.size)c='Café';
  return `<div class="hig"><input class="inp" data-cafeq="1" placeholder="Pesquisar no catálogo (nome ou referência)" value="${esc(S.cafeQ||'')}" autocomplete="off">
  <div class="chips" style="margin:8px 0">${hab.size?`<button type="button" class="chipb ${c==='hab'?'on':''}" data-act="cafeFam" data-c="hab">Habituais do cliente</button>`:''}${fams.map(f=>`<button type="button" class="chipb ${c===f?'on':''}" data-act="cafeFam" data-c="${esc(f)}">${esc(f)}</button>`).join('')}<button type="button" class="chipb" data-act="lnFree">+ Linha livre</button></div>
  <div class="cat-l" id="cafe-list">${cafeListH()}</div></div>`}
-function cafeListH(){const eid=($('#f-entidade')?.value)||S.form?.ent0||'',hab=habituais(eid),pop=popular(),q=norm(S.cafeQ||''),L=S.form?.linhas||[];
+function cafeListH(){const eid=($('#f-entidade')?.value)||S.form?.ent0||'',hab=habituais(eid),ult=ultPrecos(eid),pop=popular(),q=norm(S.cafeQ||''),L=S.form?.linhas||[];
  let c=S.cafeFam??(hab.size?'hab':'Café');if(c==='hab'&&!hab.size)c='Café';
  let items=cafeArts().filter(a=>q?temTudo([a.nome,a.ref,a.familia].join(' '),q):c==='hab'?hab.has(a.id):a.familia===c);
  items.sort((a,b)=>((c==='hab'?(hab.get(b.id)||0)-(hab.get(a.id)||0):0))||((pop.get(b.id)||0)-(pop.get(a.id)||0))||((b.foto?1:0)-(a.foto?1:0))||String(a.nome).localeCompare(String(b.nome),'pt'));
  const tot=items.length;items=items.slice(0,S.cafeLim||48);
  if(!tot)return `<p class="note" style="padding:10px 12px;margin:0">Sem artigos${q?' com "'+esc(S.cafeQ)+'"':''}. Use "+ Linha livre" para escrever à mão.</p>`;
  return `<div class="cat-g">${items.map(a=>{const n=L.filter(l=>l.artigo===a.id).reduce((s,l)=>s+(+l.qt||0),0);
-  return `<div class="cat-c${n?' on':''}"><div class="cat-i">${a.foto?`<img src="${esc(fotoUrl(a.foto))}" alt="" loading="lazy">`:`<span>${esc(initials(a.nome))}</span>`}</div><div class="cat-n">${esc(a.nome)}</div><div class="cat-p">${a.preco!=null&&a.preco!==''?eur(a.preco):'—'}${a.unidade&&a.unidade!=='un'&&a.unidade!=='unidade'?' · '+esc(a.unidade):''}</div><button type="button" class="btn sm ${n?'gold':''}" data-act="cafeAdd" data-id="${a.id}">${n?`+1 · ${n} na encomenda`:'Adicionar'}</button></div>`}).join('')}</div>${tot>items.length?`<button type="button" class="more" data-act="cafeMais">Mostrar mais (${tot-items.length})</button>`:''}`}
+  return `<div class="cat-c${n?' on':''}"><div class="cat-i">${a.foto?`<img src="${esc(fotoUrl(a.foto))}" alt="" loading="lazy">`:`<span>${esc(initials(a.nome))}</span>`}</div><div class="cat-n">${esc(a.nome)}</div><div class="cat-p">${a.preco!=null&&a.preco!==''?eur(a.preco):'—'}${a.unidade&&a.unidade!=='un'&&a.unidade!=='unidade'?' · '+esc(a.unidade):''}${(u=>u&&Math.abs(u.p-(+a.preco||0))>=0.005?`<small class="cat-u${u.p<(+a.preco||0)?' lo':''}">últ. ${eur(u.p)} · ${dmU(u.d)}</small>`:'')(ult.get(a.id))}</div><button type="button" class="btn sm ${n?'gold':''}" data-act="cafeAdd" data-id="${a.id}">${n?`+1 · ${n} na encomenda`:'Adicionar'}</button></div>`}).join('')}</div>${tot>items.length?`<button type="button" class="more" data-act="cafeMais">Mostrar mais (${tot-items.length})</button>`:''}`}
 /* catálogo de higiene (Oxigénio) dentro da encomenda: categorias + pesquisa + lista compacta */
 function higBoxH(){const c=S.higCat||'';const cats=CAT_HIG.filter(k=>D('artigos').some(a=>a.fornecedor===OXI&&a.ativo!==false&&a.categoria===k));
  return `<div class="hig"><p class="note" style="margin:0 0 8px">Entregue e faturado pela Oxigénio. Na confirmação, o cliente vê esta parte separada do café.</p>
@@ -1101,7 +1112,7 @@ function histH(){const eid=($('#f-entidade')?.value)||S.form?.ent0||'';if(!eid)r
  return `<div class="hist"><div class="hist-h">Últimas encomendas de ${esc(entName(eid))}</div>${L.length?L.map(x=>`<div class="hist-i"><div class="hist-t"><b>${fDY(x.data)}</b><span class="note">${esc(x.estado||'Nova')} · ${eur(docTotal(x))}</span>${ro?'':`<button type="button" class="btn sm" data-act="repEnc" data-id="${x.id}">Repetir</button>`}</div><ul>${(x.linhas||[]).map(l=>`<li>${esc(l.qt)} × ${esc(l.nome)} <span class="num">${eur(l.preco)}${+l.desc?` (−${esc(l.desc)}%)`:''}</span></li>`).join('')||'<li class="note">Sem artigos</li>'}</ul></div>`).join(''):'<p class="note">Ainda não há encomendas deste cliente no CRM.</p>'}</div>`}
 function redrawHist(){const el=$('#enc-hist');if(el)el.innerHTML=histH()}
 function redrawLinhas(){const el=$('#linhas');if(el)el.innerHTML=linhasH();if(S.form?.col==='encomendas')avisoRota()}
-function addLinha(a){S.form.linhas.push(a?{artigo:a.id,nome:a.fornecedor===OXI?a.nome+(a.unidade?' · '+a.unidade:''):a.nome+(a.ref?' ('+a.ref+')':''),qt:1,preco:+a.preco||0,desc:0,iva:String(a.iva??'23'),...(a.fornecedor===OXI?{forn:OXI}:{})}:{nome:'',qt:1,preco:0,desc:0,iva:'23'});redrawLinhas();const ins=document.querySelectorAll('.ln-n');const last=ins[ins.length-1];if(last&&!a)last.focus()}
+function addLinha(a){const u=a?ultPrecos(formEnt()).get(a.id):null;S.form.linhas.push(a?{artigo:a.id,nome:a.fornecedor===OXI?a.nome+(a.unidade?' · '+a.unidade:''):a.nome+(a.ref?' ('+a.ref+')':''),qt:1,preco:u?u.p:(+a.preco||0),desc:0,iva:String(a.iva??'23'),...(a.fornecedor===OXI?{forn:OXI}:{})}:{nome:'',qt:1,preco:0,desc:0,iva:'23'});redrawLinhas();const ins=document.querySelectorAll('.ln-n');const last=ins[ins.length-1];if(last&&!a)last.focus()}
 
 /* --- pickers --- */
 function showPick(k,q){
@@ -1229,6 +1240,7 @@ const ACT={
  higCat:d=>{S.higCat=d.c||'';redrawLinhas()},
  cafeFam:d=>{S.cafeFam=d.c;S.cafeQ='';S.cafeLim=48;redrawLinhas()},
  cafeMais:()=>{S.cafeLim=(S.cafeLim||48)+48;const cl=$('#cafe-list');if(cl)cl.innerHTML=cafeListH()},
+ lnUlt:d=>{const l=S.form?.linhas?.[+d.i];if(!l)return;const u=ultPrecos(formEnt()).get(l.artigo);if(!u)return;l.preco=u.p;redrawLinhas()},
  cafeAdd:d=>{const a=S.data.artigos.get(d.id);if(!a||!S.form)return;semSalto('cafeAdd',a.id,()=>{const l=S.form.linhas.find(x=>x.artigo===a.id);if(l){l.qt=(+l.qt||0)+1;redrawLinhas()}else addLinha(a)})},
  comMes:d=>{S.f.comMes=d.c;render()},
  comReg:async d=>{const k=d.c,c=(S.comissoes||[]).find(c=>String(c.mes).slice(0,7)===k&&c.fornecedor===OXI);const v=prompt(`Comissão comunicada pela Oxigénio para ${mesNome(k)} (€)`,c?.comunicado!=null?String(c.comunicado).replace('.',','):'');if(v===null)return;
