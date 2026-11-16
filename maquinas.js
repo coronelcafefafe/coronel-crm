@@ -612,6 +612,60 @@ window.MAQ_INIT = function () {
   });
 
   /* ---------- rota de abastecimento ---------- */
+
+  /* ---------- Guia de transporte da carga das máquinas (GT a Consumidor Final emitida no XD pela função xd-soba) ---------- */
+  async function loadGuias() { const { data } = await S.db.from('xd_guias').select('*').gte('dia', addD(TODAY(), -7)).order('criado', { ascending: false }); S.guias = data || []; }
+  const guiasHoje = () => (S.guias || []).filter(g => g.dia === TODAY() && g.estado === 'emitida');
+  /* sugestão da carga: para cada máquina a abastecer hoje, o que levou no último abastecimento (em unidades do XD) */
+  function sugereCarga() {
+    const ativas = D('maquinas').filter(m => m.entidade && m.estado !== 'armazem' && m.estado !== 'abate');
+    const hoje = ativas.filter(m => { const p = proxima(m); return p && p <= TODAY() && ultimoAb(m.id) !== TODAY(); });
+    const tot = new Map();
+    hoje.forEach(m => { const u = ultimoAb(m.id); if (!u) return; D('stock_mov').forEach(x => { if (x.maquina === m.id && x.tipo === 'abastecimento' && x.data === u && +x.qt > 0 && x.artigo) tot.set(x.artigo, (tot.get(x.artigo) || 0) + +x.qt); }); });
+    const L = [];
+    tot.forEach((q, id) => { const a = S.data.artigos.get(id); if (!a || !a.ref) return; L.push({ artigo: id, ref: a.ref, nome: a.nomeMaq || a.nome, qt: Math.max(1, Math.ceil(q / unCx(a) - 1e-9)), iva: String(a.iva ?? '23') }); });
+    L.sort((a, b) => a.nome.localeCompare(b.nome, 'pt'));
+    return { L, n: hoje.length };
+  }
+  const gcLinhasH = () => (S.gc.L.length ? S.gc.L.map((l, i) => `<div class="row" style="cursor:default"><span class="rt"><span class="r1">${esc(l.nome)}</span><span class="r2">${esc(l.ref)}</span></span><span class="rr" style="display:flex;gap:6px;align-items:center"><input class="inp" style="width:80px;text-align:right" type="number" inputmode="decimal" step="1" min="0" data-gcq="${i}" value="${esc(l.qt)}" aria-label="Quantidade"><button type="button" class="ib" data-act="gcDel" data-i="${i}" aria-label="Tirar">${ic('x', 16)}</button></span></div>`).join('') : '<div class="empty"><b>Sem artigos</b>Junte os artigos que vão na carrinha.</div>');
+  const gcSync = () => { document.querySelectorAll('[data-gcq]').forEach(el => { const l = S.gc?.L[+el.dataset.gcq]; if (l) l.qt = +el.value || 0; }); };
+  const gcSheet = () => {
+    const arts = D('artigos').filter(a => a.ref && a.ativo !== false && !a.oculto && a.maquinas).sort((a, b) => String(a.nomeMaq || a.nome).localeCompare(String(b.nomeMaq || b.nome), 'pt'));
+    openSheet(`<div class="sh"><h2>Guia da carga · ${fD(TODAY())}</h2><button class="ib" data-act="close" aria-label="Fechar">${ic('x')}</button></div>
+      <div class="sb"><p class="note" style="margin:0 0 10px">Guia de transporte (GT) a Consumidor Final, carga e descarga na Rua Outeiro do Casal, Fafe, válida até ao fim do dia. ${S.gc.n ? `Sugestão feita com o último abastecimento das ${S.gc.n} máquinas de hoje: acerte as quantidades ao que vai mesmo na carrinha (unidades do XD).` : ''}</p>
+      <div id="gc-l">${gcLinhasH()}</div>
+      <div style="display:flex;gap:8px;margin-top:10px"><select class="inp" id="gc-add" style="flex:1"><option value="">Juntar artigo…</option>${arts.map(a => `<option value="${a.id}">${esc(a.nomeMaq || a.nome)} (${esc(a.ref)})</option>`).join('')}</select><button type="button" class="btn" data-act="gcAdd">Juntar</button></div>
+      <p class="note" id="gc-msg" style="margin:10px 0 0"></p></div>
+      <div class="sf"><button class="btn" data-act="close" type="button">Cancelar</button><span class="grow"></span><button class="btn gold" type="button" data-act="gcEmitir" id="gc-b">Emitir guia no XD</button></div>`);
+  };
+  const callSoba = async body => { const r = await fetch(CFG.url + '/functions/v1/xd-soba', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (session?.access_token || ''), apikey: CFG.anonKey }, body: JSON.stringify(body) }); return r; };
+  Object.assign(ACT, {
+    gcAbrir: () => { const sg = sugereCarga(); S.gc = { L: sg.L, n: sg.n, chave: 'gt-' + TODAY() + '-' + Math.random().toString(36).slice(2, 10) }; gcSheet(); },
+    gcDel: d => { gcSync(); S.gc.L.splice(+d.i, 1); $('#gc-l').innerHTML = gcLinhasH(); },
+    gcAdd: () => { gcSync(); const id = $('#gc-add')?.value; const a = id && S.data.artigos.get(id); if (!a) return; const l = S.gc.L.find(x => x.artigo === id); if (l) l.qt = (+l.qt || 0) + 1; else S.gc.L.push({ artigo: id, ref: a.ref, nome: a.nomeMaq || a.nome, qt: 1, iva: String(a.iva ?? '23') }); $('#gc-l').innerHTML = gcLinhasH(); $('#gc-add').value = ''; },
+    gcEmitir: async () => {
+      gcSync(); const L = S.gc.L.filter(l => +l.qt > 0);
+      if (!L.length) { $('#gc-msg').textContent = 'A guia não tem artigos.'; return; }
+      if (!confirm(`Emitir no XD a guia de transporte com ${L.length} artigo${L.length === 1 ? '' : 's'}?\n\nUm documento certificado não se pode apagar.`)) return;
+      const b = $('#gc-b'); b.disabled = true; b.textContent = 'A emitir…'; $('#gc-msg').textContent = '';
+      try {
+        const r = await callSoba({ acao: 'gt_carga', chave: S.gc.chave, linhas: L.map(l => ({ ref: l.ref, nome: l.nome, qt: +l.qt, iva: l.iva })) });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || !j.ok) { $('#gc-msg').innerHTML = `<span style="color:var(--bad)">Não foi emitida: ${esc(j.error || 'erro ' + r.status)}</span>`; b.disabled = false; b.textContent = 'Tentar outra vez'; await loadGuias(); return; }
+        await loadGuias(); closeSheet(); toast(`Guia ${j.guia?.identificador || ''} emitida no XD`); render();
+      } catch (e) { $('#gc-msg').textContent = 'Sem ligação. Tente outra vez.'; b.disabled = false; b.textContent = 'Tentar outra vez'; }
+    },
+    gcPdf: async d => {
+      toast('A abrir a guia…');
+      try { const r = await callSoba({ acao: 'guia_pdf', id: d.id }); if (!r.ok) { toast('Não foi possível abrir o PDF'); return; } const u = URL.createObjectURL(await r.blob()); window.open(u, '_blank') || (location.href = u); } catch (_) { toast('Sem ligação'); }
+    },
+  });
+  const guiaPainel = () => {
+    if (!S.guias) { if (!S._gL) { S._gL = 1; loadGuias().then(() => { if (S.view === 'rota') render(); }).catch(() => {}); } return ''; }
+    const G = guiasHoje();
+    return `<div class="panel" style="margin-bottom:14px"><div class="ph"><h2>Guia da carga</h2><span class="grow"></span><button class="btn sm ${G.length ? '' : 'gold'}" data-act="gcAbrir">${G.length ? 'Nova guia' : 'Emitir guia da carga'}</button></div>
+      ${G.length ? G.map(g => `<div class="row" role="button" data-act="gcPdf" data-id="${g.id}"><span class="av k">${ic('doc', 16)}</span><span class="rt"><span class="r1">${esc(g.identificador || 'Guia de transporte')}</span><span class="r2">${esc([g.atcud ? 'ATCUD ' + g.atcud : '', (g.linhas || []).length + ' artigos', new Date(g.criado).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })].filter(Boolean).join(' · '))}</span></span><span class="rr">${badge('PDF', 'mute')}</span></div>`).join('') : '<p class="note" style="margin:0 16px 12px">Antes de sair, emita a guia de transporte com o que vai na carrinha. Fica aqui para mostrar à GNR.</p>'}</div>`;
+  };
   VIEWS.rota = () => loadingOr(() => {
     const chips = ['Hoje', 'Amanhã', 'Próximos 7 dias'], c = S.f.rota ?? chips[0];
     const ate = c === 'Hoje' ? TODAY() : c === 'Amanhã' ? addD(TODAY(), 1) : addD(TODAY(), 7);
@@ -688,7 +742,7 @@ window.MAQ_INIT = function () {
         ${over ? `<p class="note" style="margin:0 16px 8px;color:var(--bad);font-weight:500">Passa o limite da Berlingo (${BERLINGO.garrafoes} garrafões / ${BERLINGO.kg} kg): passar entregas para o outro dia da zona ou levar a Iveco (Hospital logo de manhã).</p>` : ''}
         ${E.length ? '<p class="note" style="margin:0 16px 10px">As entregas estão na volta, junto às máquinas mais perto.</p>' : '<div class="empty"><b>Sem entregas marcadas</b>As encomendas com entrega neste dia aparecem na volta.</div>'}</div>`;
     }
-    return `<div class="pg">${top}${sum}${entH}${blocos || `<div class="panel empty"><b>${c === 'Hoje' ? 'Nada para abastecer hoje' : 'Nada previsto'}</b>${D('maquinas').some(m => m.freq) ? 'Veja os próximos dias.' : 'Defina a frequência de abastecimento em cada máquina (Editar ou Mover).'}</div>`}</div>`;
+    return `<div class="pg">${top}${sum}${c === 'Hoje' ? guiaPainel() : ''}${entH}${blocos || `<div class="panel empty"><b>${c === 'Hoje' ? 'Nada para abastecer hoje' : 'Nada previsto'}</b>${D('maquinas').some(m => m.freq) ? 'Veja os próximos dias.' : 'Defina a frequência de abastecimento em cada máquina (Editar ou Mover).'}</div>`}</div>`;
   });
 
   /* ---------- mapa das máquinas ---------- */
