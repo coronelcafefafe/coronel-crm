@@ -226,8 +226,12 @@ window.MAQ_INIT = function () {
       ${S.verValores ? `<button class="btn" data-act="go" data-v="maqqr">${ic('qr', 18)}<span>Etiquetas QR</span></button>` : ''}</div>
       <div class="chips">${chips.map(x => `<button class="chipb ${x === c ? 'on' : ''}" data-act="chip" data-v="maquinas" data-c="${esc(x)}">${esc(x)}</button>`).join('')}</div>
       ${S.verValores ? `<div class="chips">${PER.map(([k, t]) => `<button class="chipb ${k === per ? 'on' : ''}" data-act="maqPer" data-c="${k}">${t}</button>`).join('')}</div>` : ''}</div>`;
-    /* resumo de todas as máquinas: hoje, mês e ano (só para quem vê valores) */
-    const resumo = S.verValores ? (() => {
+    const resumo = S.verValores ? maqResumoH() : '';
+    return `<div class="pg">${roBanner()}${resumo}${top}${MAQ_SUM(L, tot)}${listBlock('maquinas', L, MAQ_ROW(R), '<b>Sem máquinas</b>Registe as máquinas com o número que têm (ou vão ter) na etiqueta QR.')}</div>`;
+  });
+  /* resumo de todas as máquinas: hoje, mês e ano (só para quem vê valores); também no Início do computador */
+  window.maqResumoH = () => {
+    {
       const todas = D('maquinas');
       const melhor = {};
       const bloco = (k, t) => {
@@ -241,11 +245,10 @@ window.MAQ_INIT = function () {
       };
       return `<div class="panel" style="margin:0 0 12px"><div class="ph"><h2>Faturado nas máquinas</h2></div><div class="pb"><div class="mini">${bloco('dia', 'Hoje')}${bloco('mes', 'Este mês')}${bloco('ano', 'Este ano')}${(() => { const lin = (k, t) => { const b = melhor[k]; if (!b) return `<small class="note" style="display:block;margin-top:6px">${t}: —</small>`; return `<button class="lnk" style="display:block;padding:0;margin-top:6px;text-align:left" data-act="maqOpen" data-id="${b.m.id}"><small class="note" style="display:block">${t}</small><b style="font-size:18px">#${esc(b.m.numero)} · ${eur(b.rs)}</b>${b.mg != null ? ` <small class="note">${b.mg}%</small>` : ''}</button>`; }; return `<div><span>★ Melhor máquina</span>${lin('mes', 'Este mês')}${lin('ano', 'Este ano')}</div>`; })()}</div>
         <p class="note" style="margin:8px 0 0">Total do cofre de todas as máquinas, com IVA. Rentabilidade = faturado sem IVA (23%), descontado o troco e o custo dos produtos e peças. A melhor máquina é a de maior rentabilidade no período; toque para a abrir.</p></div></div>`;
-    })() : '';
-    const sum = `<p class="note" style="margin:0 0 10px"><b>${L.length}</b> máquina${L.length === 1 ? '' : 's'}${tot ? ` · faturado <b>${eur(tot.fat)}</b> · resultado <b>${eur(tot.res)}</b>` : ''}. Leia o QR colado na máquina para abrir a ficha diretamente.</p>`;
-    const row = m => rowH({ act: 'maqOpen', id: m.id, av: m.numero, avk: 1, title: `Máquina ${m.numero}${m.modelo ? ' · ' + m.modelo : ''}`, sub: `${tipoT(m)} · ${local(m)}${m.sitio ? ' (' + m.sitio + ')' : ''}${m.freq ? ' · ' + FREQ[m.freq].toLowerCase() : ''}`, right: R ? eur(R.get(m.id).res) : undefined, badges: estB(m) + visitaB(m) + pecaB(m.id) });
-    return `<div class="pg">${roBanner()}${resumo}${top}${sum}${listBlock('maquinas', L, row, '<b>Sem máquinas</b>Registe as máquinas com o número que têm (ou vão ter) na etiqueta QR.')}</div>`;
-  });
+    }
+  };
+  const MAQ_SUM = (L, tot) => `<p class="note" style="margin:0 0 10px"><b>${L.length}</b> máquina${L.length === 1 ? '' : 's'}${tot ? ` · faturado <b>${eur(tot.fat)}</b> · resultado <b>${eur(tot.res)}</b>` : ''}. Leia o QR colado na máquina para abrir a ficha diretamente.</p>`;
+  const MAQ_ROW = R => m => rowH({ act: 'maqOpen', id: m.id, av: m.numero, avk: 1, title: `Máquina ${m.numero}${m.modelo ? ' · ' + m.modelo : ''}`, sub: `${tipoT(m)} · ${local(m)}${m.sitio ? ' (' + m.sitio + ')' : ''}${m.freq ? ' · ' + FREQ[m.freq].toLowerCase() : ''}`, right: R ? eur(R.get(m.id).res) : undefined, badges: estB(m) + visitaB(m) + pecaB(m.id) });
 
   /* ---------- ficha da máquina ---------- */
   VIEWS.maquina = () => loadingOr(() => {
