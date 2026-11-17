@@ -140,7 +140,7 @@ window.VENDAS_INIT = () => {
     const mxTop = top.length ? top[0][1].v : 1;
     const dif = new Map();
     new Set([...AA.keys(), ...AP.keys()]).forEach(r => { const a = AA.get(r), p = AP.get(r); dif.set(r, { nome: (a || p).nome, a: a?.v || 0, p: p?.v || 0, qa: a?.q || 0, qp: p?.q || 0, d: (a?.v || 0) - (p?.v || 0) }); });
-    if (mA || mP) dif.set('__maq', { nome: 'Máquinas de vending (cofre)', a: mA, p: mP, d: mA - mP, maq: 1 });
+    if (mP > 0.5) dif.set('__maq', { nome: 'Máquinas de vending (cofre)', a: mA, p: mP, d: mA - mP, maq: 1 });
     const L = [...dif.values()];
     const sobe = L.filter(x => x.d > 0.5).sort((a, b) => b.d - a.d).slice(0, 4), desce = L.filter(x => x.d < -0.5).sort((a, b) => a.d - b.d).slice(0, 4);
     const sub = x => x.p < 0.5 ? (x.maq && desde ? `registos desde ${desde.split('-').reverse().join('/')}` : 'não vendeu no período do ano passado') : `${k0(x.a)} vs ${k0(x.p)}`;
