@@ -28,11 +28,20 @@ window.VENDAS_INIT = () => {
   const pill = (d, novo) => d == null ? (novo ? '<span class="vn-p">novo</span>' : '') : `<span class="vn-p ${d < 0 ? 'dn' : ''}">${d > 0 ? '+' : ''}${d}%</span>`;
   const k0 = v => Math.round(v).toLocaleString('pt-PT') + ' €';
 
+  let HIST = null, aCarregar = false;
+  const carregaHist = () => {
+    if (HIST || aCarregar || !S.db) return;
+    aCarregar = true;
+    S.db.from('maq_hist').select('mes,valor').then(({ data }) => { HIST = data || []; aCarregar = false; if (S.view === 'inicio') render(); }, () => { aCarregar = false; });
+  };
   const dados = () => {
     const xv = D('xd_documentos').filter(d => XD_VENDA.includes(d.tipo) && d.data);
     const maq = []; /* {data, v} sem IVA */
     D('maq_fat').forEach(f => f.data && maq.push({ data: f.data, v: (+f.valor || 0) / 1.23 }));
     D('maq_troco').forEach(t => t.data && maq.push({ data: String(t.data).slice(0, 10), v: (t.tipo === 'retirar' ? 1 : -1) * (+t.valor || 0) / 1.23 }));
+    /* histórico mensal do Excel (maq_hist): só entra nos meses em que o CRM ainda não tem registos de cofre */
+    const comCRM = new Set(maq.map(x => x.data.slice(0, 7)));
+    (HIST || []).forEach(h => { const m = String(h.mes).slice(0, 7); if (!comCRM.has(m)) maq.push({ data: m + '-01', v: (+h.valor || 0) / 1.23, hist: 1 }); });
     return { xv, maq };
   };
 
@@ -98,6 +107,7 @@ window.VENDAS_INIT = () => {
 
   window.vendasH = () => {
     if (!window.matchMedia('(min-width:960px)').matches) return '';
+    carregaHist();
     const per = S.f.venper || 'ano', P = periodo(per);
     const { xv, maq } = dados();
     const hoje = iso(new Date()), yA = +hoje.slice(0, 4), yP = yA - 1, mAtual = +hoje.slice(5, 7) - 1;
@@ -132,7 +142,7 @@ window.VENDAS_INIT = () => {
     if (mA || mP) dif.set('__maq', { nome: 'Máquinas de vending (cofre)', a: mA, p: mP, d: mA - mP, maq: 1 });
     const L = [...dif.values()];
     const sobe = L.filter(x => x.d > 0.5).sort((a, b) => b.d - a.d).slice(0, 4), desce = L.filter(x => x.d < -0.5).sort((a, b) => a.d - b.d).slice(0, 4);
-    const sub = x => x.p < 0.5 ? (x.maq && desde ? `registo no CRM desde ${desde.split('-').reverse().join('/')}` : 'não vendeu no período do ano passado') : `${k0(x.a)} vs ${k0(x.p)}`;
+    const sub = x => x.p < 0.5 ? (x.maq && desde ? `registos desde ${desde.split('-').reverse().join('/')}` : 'não vendeu no período do ano passado') : `${k0(x.a)} vs ${k0(x.p)}`;
     const mv = (x, up) => `<div class="vn-m"><span class="nm" title="${esc(x.nome)}">${esc(x.nome)}<small>${sub(x)}</small></span><b class="vn-n" style="color:var(--${up ? 'ok' : 'bad'})">${up ? '+' : '−'}${k0(Math.abs(x.d))}</b></div>`;
 
     return `<div class="vn-top"><div><div class="eyebrow">Faturado no XD + máquinas · sem IVA</div><h2 style="font-family:var(--f-display);font-size:28px;font-weight:600">Como estão as vendas</h2></div><span class="grow" style="flex:1"></span>
@@ -140,7 +150,7 @@ window.VENDAS_INIT = () => {
     <div class="vn-k">
       ${kpi(`Vendido ${tPer}`, k0(xA + mA), comp(xA + mA, xP + mP))}
       ${kpi('Faturado no XD', k0(xA), comp(xA, xP))}
-      ${kpi('Máquinas (cofre)', k0(mA), mP > 0.5 ? comp(mA, mP) : (desde ? `registo no CRM desde ${desde.split('-').reverse().join('/')}` : 'sem registos de cofre'))}
+      ${kpi('Máquinas (cofre)', k0(mA), mP > 0.5 ? comp(mA, mP) : (desde ? `registos desde ${desde.split('-').reverse().join('/')}` : 'sem registos de cofre'))}
       ${kpi('Clientes faturados', cA, cP ? `<span class="vn-p ${cA < cP ? 'dn' : ''}">${cA >= cP ? '+' : '−'}${Math.abs(cA - cP)}</span> vs ${cP} no ano passado` : 'sem dados do ano passado')}
     </div>
     <div class="vn-g">
