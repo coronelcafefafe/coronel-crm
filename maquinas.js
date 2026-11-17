@@ -402,9 +402,9 @@ window.MAQ_INIT = function () {
 
   async function insertRows(col, rows) {
     if (!canAct() || !rows.length) return null;
-    const { data, error } = await S.db.from(col).insert(rows.map(toRow)).select();
+    const { data, error } = await S.db.from(col).insert(rows.map(toRow)).select((typeof SEL !== 'undefined' && SEL[col]) || '*');
     if (error) { dbErr(error); return null; }
-    data.forEach(r => putLocal(col, r));
+    data.forEach((r, i) => putLocal(col, r, S.verValores ? rows[i] : null));
     return data;
   }
 
