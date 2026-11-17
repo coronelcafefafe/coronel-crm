@@ -9,9 +9,9 @@ window.VENDAS_INIT = () => {
   .vn-g{display:grid;grid-template-columns:1.6fr 1fr;gap:12px;margin-bottom:12px}
   .vn-g2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
   .vn-leg{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--ink-3);margin:0 0 4px}.vn-leg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
-  .vn-r{display:grid;grid-template-columns:18px minmax(0,1fr) minmax(36px,90px) 72px 52px;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line);font-size:14px}
+  .vn-r{display:grid;grid-template-columns:18px minmax(0,1fr) 74px 54px;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line);font-size:14px}
   .vn-r:first-child{border-top:0}.vn-r .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .vn-bar{height:7px;background:var(--surface-2);border-radius:4px;overflow:hidden}.vn-bar b{display:block;height:100%;background:var(--ink);border-radius:4px}
+  .vn-bar{display:block;margin-top:5px;height:5px;background:var(--surface-2);border-radius:4px;overflow:hidden}.vn-bar b{display:block;height:100%;background:var(--ink);border-radius:4px}
   .vn-n{text-align:right;font-variant-numeric:tabular-nums}
   .vn-m{display:grid;grid-template-columns:minmax(0,1fr) 96px;gap:8px;align-items:center;padding:8px 0;border-top:1px solid var(--line);font-size:14px}
   .vn-m:first-child{border-top:0}.vn-m small{display:block;color:var(--ink-3);font-size:12px}.vn-m .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -155,7 +155,7 @@ window.VENDAS_INIT = () => {
     <div class="vn-g2">
       <div class="panel" style="margin:0"><div class="ph"><h2>Artigos mais vendidos</h2></div><div class="pb">
         <p class="note" style="margin:0 0 6px">${tPer[0].toUpperCase() + tPer.slice(1)} · variação vs mesmo período do ano passado</p>
-        ${top.length ? top.map(([r, x], i) => { const p = AP.get(r); return `<div class="vn-r"><span class="note">${i + 1}</span><span class="nm" title="${esc(x.nome)}">${esc(x.nome)}</span><span class="vn-bar"><b style="width:${Math.max(2, x.v / mxTop * 100)}%"></b></span><span class="vn-n">${k0(x.v)}</span><span class="vn-n">${pill(pct(x.v, p?.v || 0), !(p?.v > 0.5))}</span></div>`; }).join('') : '<div class="empty">Sem vendas no período.</div>'}
+        ${top.length ? top.map(([r, x], i) => { const p = AP.get(r); return `<div class="vn-r"><span class="note">${i + 1}</span><span style="min-width:0"><span class="nm" style="display:block" title="${esc(x.nome)}">${esc(x.nome)}</span><span class="vn-bar"><b style="width:${Math.max(2, x.v / mxTop * 100)}%"></b></span></span><span class="vn-n">${k0(x.v)}</span><span class="vn-n">${pill(pct(x.v, p?.v || 0), !(p?.v > 0.5))}</span></div>`; }).join('') : '<div class="empty">Sem vendas no período.</div>'}
       </div></div>
       <div class="panel" style="margin:0"><div class="ph"><h2>Onde mais subiu e desceu</h2></div><div class="pb">
         <div class="vn-s" style="color:var(--ok)">Subiu</div>${sobe.map(x => mv(x, 1)).join('') || '<p class="note">Nada subiu.</p>'}
