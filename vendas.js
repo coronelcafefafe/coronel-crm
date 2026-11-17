@@ -128,6 +128,7 @@ window.VENDAS_INIT = () => {
     const cli = (a, b) => new Set(xv.filter(d => d.data >= a && d.data <= b && d.entidade && !GEN.has(String(d.codigo_xd ?? d.codigoXd ?? ''))).map(d => d.entidade)).size;
     const xA = somaX(P.a, P.b), xP = somaX(P.pa, P.pb), mA = somaM(P.a, P.b), mP = somaM(P.pa, P.pb);
     const cA = cli(P.a, P.b), cP = cli(P.pa, P.pb);
+    const semMaqP = mP < 0.5 && mA > 0.5; /* ano passado sem dados das máquinas: não comparar maçãs com laranjas */
     const desde = maq.length ? maq.reduce((m, x) => x.data < m ? x.data : m, '9999') : null;
     const tPer = { mes: 'este mês', ano: 'este ano', '12m': 'nos últimos 12 meses' }[per];
     const kpi = (t, v, s) => `<div class="kpi"><span class="eyebrow">${t}</span><span class="v">${v}</span><span class="s">${s}</span></div>`;
@@ -148,7 +149,7 @@ window.VENDAS_INIT = () => {
     return `<div class="vn-top"><div><div class="eyebrow">Faturado no XD + máquinas · sem IVA</div><h2 style="font-family:var(--f-display);font-size:28px;font-weight:600">Como estão as vendas</h2></div><span class="grow" style="flex:1"></span>
       <div class="chips" style="margin:0">${[['mes', 'Este mês'], ['ano', 'Ano até hoje'], ['12m', '12 meses']].map(([k, t]) => `<button class="chipb ${k === per ? 'on' : ''}" data-act="venPer" data-c="${k}">${t}</button>`).join('')}</div></div>
     <div class="vn-k">
-      ${kpi(`Vendido ${tPer}`, k0(xA + mA), comp(xA + mA, xP + mP))}
+      ${kpi(`Vendido ${tPer}`, k0(xA + mA), semMaqP ? `ano passado ${k0(xP)}, só XD (máquinas sem registo)` : comp(xA + mA, xP + mP))}
       ${kpi('Faturado no XD', k0(xA), comp(xA, xP))}
       ${kpi('Máquinas (cofre)', k0(mA), mP > 0.5 ? comp(mA, mP) : (desde ? `registos desde ${desde.split('-').reverse().join('/')}` : 'sem registos de cofre'))}
       ${kpi('Clientes faturados', cA, cP ? `<span class="vn-p ${cA < cP ? 'dn' : ''}">${cA >= cP ? '+' : '−'}${Math.abs(cA - cP)}</span> vs ${cP} no ano passado` : 'sem dados do ano passado')}
@@ -160,7 +161,7 @@ window.VENDAS_INIT = () => {
         <p class="note" style="margin:6px 0 0">${MES[mAtual]} de ${yA} ainda vai a meio. Passe o rato por cima de uma barra para ver o valor.</p></div></div>
       <div class="panel" style="margin:0"><div class="ph"><h2>Acumulado no ano</h2></div><div class="pb">
         ${acumulado(CA, CP, mAtual, yA, yP)}
-        <p class="note" style="margin:6px 0 0"><b style="color:var(--ink)">${yA}: ${k0(CA[mAtual])}</b> · ${yP} até ao mesmo dia: ${k0(CP[mAtual])} ${pill(pct(CA[mAtual], CP[mAtual]))}<br>Tracejado: ${yP}. Mostra se estamos a ganhar ou a perder terreno.</p></div></div>
+        <p class="note" style="margin:6px 0 0"><b style="color:var(--ink)">${yA}: ${k0(CA[mAtual])}</b> · ${yP} até ao mesmo dia: ${k0(CP[mAtual])} ${MP.some(v => v) || !MA.some(v => v) ? pill(pct(CA[mAtual], CP[mAtual])) : `(só XD, sem máquinas registadas)`}<br>Tracejado: ${yP}. Mostra se estamos a ganhar ou a perder terreno.</p></div></div>
     </div>
     <div class="vn-g2">
       <div class="panel" style="margin:0"><div class="ph"><h2>Artigos mais vendidos</h2></div><div class="pb">
