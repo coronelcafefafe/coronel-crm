@@ -9,7 +9,7 @@ window.VENDAS_INIT = () => {
   .vn-g{display:grid;grid-template-columns:1.6fr 1fr;gap:12px;margin-bottom:12px}
   .vn-g2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
   .vn-leg{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--ink-3);margin:0 0 4px}.vn-leg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
-  .vn-r{display:grid;grid-template-columns:18px minmax(0,1fr) 110px 84px 56px;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line);font-size:14px}
+  .vn-r{display:grid;grid-template-columns:18px minmax(0,1fr) minmax(36px,90px) 72px 52px;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line);font-size:14px}
   .vn-r:first-child{border-top:0}.vn-r .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .vn-bar{height:7px;background:var(--surface-2);border-radius:4px;overflow:hidden}.vn-bar b{display:block;height:100%;background:var(--ink);border-radius:4px}
   .vn-n{text-align:right;font-variant-numeric:tabular-nums}
