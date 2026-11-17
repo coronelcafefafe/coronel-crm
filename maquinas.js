@@ -638,7 +638,7 @@ window.MAQ_INIT = function () {
       <p class="note" id="gc-msg" style="margin:10px 0 0"></p></div>
       <div class="sf"><button class="btn" data-act="close" type="button">Cancelar</button><span class="grow"></span><button class="btn gold" type="button" data-act="gcEmitir" id="gc-b">Emitir guia no XD</button></div>`);
   };
-  const callSoba = async body => { const r = await fetch(CFG.url + '/functions/v1/xd-soba', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (session?.access_token || ''), apikey: CFG.anonKey }, body: JSON.stringify(body) }); return r; };
+  const callSoba = async body => { const r = await fetch(CFG.url + '/functions/v1/xd-soba', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + ((await S.db.auth.getSession()).data.session?.access_token || ''), apikey: CFG.anonKey }, body: JSON.stringify(body) }); return r; };
   Object.assign(ACT, {
     gcAbrir: () => { const sg = sugereCarga(); S.gc = { L: sg.L, n: sg.n, chave: 'gt-' + TODAY() + '-' + Math.random().toString(36).slice(2, 10) }; gcSheet(); },
     gcDel: d => { gcSync(); S.gc.L.splice(+d.i, 1); $('#gc-l').innerHTML = gcLinhasH(); },
