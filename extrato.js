@@ -5,7 +5,6 @@ window.EXT_INIT = function () {
   const EMPRESA = 'LPAM Unipessoal Lda · Urb. Capitão Salgueiro Maia, 69/70, 4820-260 Fafe';
   const CONTACTO = '919 982 150 · geral@coronelcafe.com · coronelcafe.com';
   const IBAN = 'PT50 0010 0000 5596 1190 0014 4', TITULAR = 'LPAM Unipessoal Lda', BANCO = 'BPI';
-  const TIPO = { FT: 'Fatura', FR: 'Fatura-recibo', FS: 'Fatura simplificada', ND: 'Nota de débito', NC: 'Nota de crédito' };
   const dPT = s => s ? String(s).slice(0, 10).split('-').reverse().join('/') : '';
   const emailOk = s => String(s || '').split(/[;,\s]+/).find(v => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) || '';
   const nomeFich = e => 'Extrato_pendentes_' + String(e.nome || 'cliente').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 50) + '_' + TODAY() + '.pdf';

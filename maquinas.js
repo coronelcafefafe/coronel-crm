@@ -501,7 +501,6 @@ window.MAQ_INIT = function () {
       if (f.guiaFeita) loadGuias().catch(() => {});
       render();
     },
-    maqCofreSim: async (d, b) => { const m = M(d.id); if (!m || !canAct()) return; b.disabled = true; b.textContent = 'A registar…'; closeSheet(); await registaCofre(m); render(); },
     maqTroco: d => {
       const m = M(d.id); if (!m || !canAct()) return;
       openSheet(`<div class="sh"><h2>Troco · máquina ${esc(m.numero)}</h2><button class="ib" data-act="close" aria-label="Fechar">${ic('x')}</button></div><div class="sb">
