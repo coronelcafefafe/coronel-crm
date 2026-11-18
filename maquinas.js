@@ -353,7 +353,7 @@ window.MAQ_INIT = function () {
     const lista = f.linhas.map(l => `${esc(l.nome)} × ${String(l.qt).replace('.', ',')}`).join(' · ');
     openSheet(`<div class="sh"><h2>Máquina ${esc(m.numero)} · abastecida</h2><button class="ib" data-act="close" aria-label="Fechar">${ic('x')}</button></div><div class="sb">
       ${temCofre(m) ? sn('cofre', 'Levantou o cofre?') : ''}
-      ${f.linhas.length ? sn('guia', 'Emitir a guia de transporte (GT) desta máquina no XD?', `Para ${esc(S.data.entidades.get(m.entidade)?.nome || 'o cliente')}, descarga na morada do cliente, a referenciar a guia global de hoje. ${lista} <span style="opacity:.8">(unidades do XD; a guia certificada não se pode apagar)</span>${S.guias && !S.guias.some(g => g.tipo === 'GTG' && g.dia === TODAY() && g.estado === 'emitida') ? '<br><b style="color:var(--bad)">Ainda não há guia global de hoje: emita-a primeiro na Rota (Guia da carga).</b>' : ''}`) : '<p class="note">Os produtos não têm código do XD, por isso não há guia a emitir.</p>'}
+      ${f.linhas.length ? sn('guia', 'Emitir a guia desta máquina no XD?', `Guia a Consumidor Final, descarga no local da máquina, com a referência da guia global de hoje. ${lista} <span style="opacity:.8">(unidades do XD; a guia certificada não se pode apagar)</span>${S.guias && !S.guias.some(g => g.tipo === 'GTG' && g.dia === TODAY() && g.estado === 'emitida' && String(g.chave).startsWith('gt-')) ? '<br><b style="color:var(--bad)">Ainda não há guia global de hoje: emita-a primeiro na Rota (Guia da carga).</b>' : ''}`) : '<p class="note">Os produtos não têm código do XD, por isso não há guia a emitir.</p>'}
       <p class="note" id="ab-msg" style="margin:0"></p></div>
       <div class="sf"><span class="grow"></span><button class="btn pri" type="button" data-act="abFimOk" ${f.cofre === null || f.guia === null ? 'disabled' : ''}>Concluir</button></div>`);
   }
@@ -494,7 +494,6 @@ window.MAQ_INIT = function () {
           const j = await r.json().catch(() => ({}));
           if (!r.ok || !j.ok) { if (msg) msg.innerHTML = `<span style="color:var(--bad)">A guia não foi emitida: ${esc(j.error || 'erro ' + r.status)}</span>`; b.disabled = false; b.textContent = 'Tentar outra vez'; return; }
           f.guiaFeita = j.guia?.identificador || 'Guia';
-          if (j.foraDaGlobal?.length) toast('Fora da guia global: ' + j.foraDaGlobal.join(', '));
         } catch (_) { if (msg) msg.textContent = 'Sem ligação. Tente outra vez.'; b.disabled = false; b.textContent = 'Tentar outra vez'; return; }
       }
       closeSheet(); S.abFim = null;
@@ -654,7 +653,7 @@ window.MAQ_INIT = function () {
 
   /* ---------- Guias de transporte: de manhã a guia GLOBAL (GTG) com a carga; em cada máquina uma GT ao cliente que a referencia ---------- */
   async function loadGuias() { const { data } = await S.db.from('xd_guias').select('*').gte('dia', addD(TODAY(), -7)).order('criado', { ascending: false }); S.guias = data || []; }
-  const guiasHoje = () => (S.guias || []).filter(g => g.dia === TODAY() && g.estado === 'emitida' && (g.tipo === 'GTG' || g.tipo === 'GT'));
+  const guiasHoje = () => (S.guias || []).filter(g => g.dia === TODAY() && g.estado === 'emitida' && (g.tipo === 'GTG' || g.tipo === 'GT' || g.tipo === 'GTM'));
   /* sugestão da carga: para cada máquina a abastecer hoje, o que levou no último abastecimento (em unidades do XD) */
   function sugereCarga() {
     const ativas = D('maquinas').filter(m => m.entidade && m.estado !== 'armazem' && m.estado !== 'abate');
@@ -671,7 +670,7 @@ window.MAQ_INIT = function () {
   const gcSheet = () => {
     const arts = D('artigos').filter(a => a.ref && a.ativo !== false && !a.oculto && a.maquinas).sort((a, b) => String(a.nomeMaq || a.nome).localeCompare(String(b.nomeMaq || b.nome), 'pt'));
     openSheet(`<div class="sh"><h2>Guia da carga · ${fD(TODAY())}</h2><button class="ib" data-act="close" aria-label="Fechar">${ic('x')}</button></div>
-      <div class="sb"><p class="note" style="margin:0 0 10px">Guia de transporte GLOBAL: sai do armazém (Rua Outeiro do Casal, Fafe) com tudo o que vai na carrinha, válida até ao fim do dia. Em cada máquina abastecida é emitida a GT para o cliente, que referencia esta. ${S.gc.n ? `Sugestão feita com o último abastecimento das ${S.gc.n} máquinas de hoje: acerte as quantidades ao que vai mesmo na carrinha (unidades do XD).` : ''}</p>
+      <div class="sb"><p class="note" style="margin:0 0 10px">Guia de transporte GLOBAL: sai do armazém (Rua Outeiro do Casal, Fafe) com tudo o que vai na carrinha, válida até ao fim do dia. Em cada máquina abastecida é emitida uma guia a Consumidor Final, com descarga no local da máquina, que referencia esta. ${S.gc.n ? `Sugestão feita com o último abastecimento das ${S.gc.n} máquinas de hoje: acerte as quantidades ao que vai mesmo na carrinha (unidades do XD).` : ''}</p>
       <div id="gc-l">${gcLinhasH()}</div>
       <div style="display:flex;gap:8px;margin-top:10px"><select class="inp" id="gc-add" style="flex:1"><option value="">Juntar artigo…</option>${arts.map(a => `<option value="${a.id}">${esc(a.nomeMaq || a.nome)} (${esc(a.ref)})</option>`).join('')}</select><button type="button" class="btn" data-act="gcAdd">Juntar</button></div>
       <p class="note" id="gc-msg" style="margin:10px 0 0"></p></div>
@@ -703,7 +702,7 @@ window.MAQ_INIT = function () {
     if (!S.guias) { if (!S._gL) { S._gL = 1; loadGuias().then(() => { if (S.view === 'rota') render(); }).catch(() => {}); } return ''; }
     const G = guiasHoje().sort((a, b) => (a.tipo === 'GTG' ? 0 : 1) - (b.tipo === 'GTG' ? 0 : 1)), temG = G.some(g => g.tipo === 'GTG');
     return `<div class="panel" style="margin-bottom:14px"><div class="ph"><h2>Guia da carga</h2><span class="grow"></span><button class="btn sm ${G.length ? '' : 'gold'}" data-act="gcAbrir">${temG ? 'Nova guia global' : 'Emitir guia da carga'}</button></div>
-      ${G.length ? G.map(g => `<div class="row" role="button" data-act="gcPdf" data-id="${g.id}"><span class="av k">${ic('doc', 16)}</span><span class="rt"><span class="r1">${esc(g.identificador || 'Guia de transporte')}${g.tipo === 'GTG' ? ' · global' : ''}</span><span class="r2">${esc([g.atcud ? 'ATCUD ' + g.atcud : '', (g.linhas || []).length + ' artigos', new Date(g.criado).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })].filter(Boolean).join(' · '))}</span></span><span class="rr">${badge('PDF', 'mute')}</span></div>`).join('') : '<p class="note" style="margin:0 16px 12px">Antes de sair, emita a guia global com o que vai na carrinha. Em cada máquina, a GT do cliente é emitida no fim do abastecimento. Ficam aqui para mostrar à GNR.</p>'}</div>`;
+      ${G.length ? G.map(g => `<div class="row" role="button" data-act="gcPdf" data-id="${g.id}"><span class="av k">${ic('doc', 16)}</span><span class="rt"><span class="r1">${esc(g.identificador || 'Guia de transporte')}${g.tipo === 'GTG' ? ' · global' : g.tipo === 'GTM' ? ' · máquina' : ''}</span><span class="r2">${esc([g.atcud ? 'ATCUD ' + g.atcud : '', (g.linhas || []).length + ' artigos', new Date(g.criado).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })].filter(Boolean).join(' · '))}</span></span><span class="rr">${badge('PDF', 'mute')}</span></div>`).join('') : '<p class="note" style="margin:0 16px 12px">Antes de sair, emita a guia global com o que vai na carrinha. Em cada máquina, a guia da máquina é emitida no fim do abastecimento. Ficam aqui para mostrar à GNR.</p>'}</div>`;
   };
   VIEWS.rota = () => loadingOr(() => {
     const chips = ['Hoje', 'Amanhã', 'Próximos 7 dias'], c = S.f.rota ?? chips[0];
