@@ -346,6 +346,17 @@ window.MAQ_INIT = function () {
   /* cofre: só registo de levantamento (o dinheiro é contado na empresa) */
   const temCofre = m => !!(m && m.entidade && m.tipo !== 'cafe' && m.estado !== 'armazem');
   const ultCofre = id => { let u = null; D('maq_cofre').forEach(x => { if (x.maquina === id && (!u || x.data > u.data)) u = x; }); return u; };
+  /* ecrã final do abastecimento: duas perguntas e um só botão */
+  function abFimSheet() {
+    const f = S.abFim; if (!f) return; const m = M(f.maq); if (!m) return;
+    const sn = (k, t, sub) => `<div style="margin:0 0 16px"><p style="margin:0 0 8px;font-size:17px">${t}</p>${sub ? `<p class="note" style="margin:-4px 0 8px">${sub}</p>` : ''}<div style="display:flex;gap:10px">${[['1', 'Sim'], ['0', 'Não']].map(([v, l]) => `<button type="button" class="btn ${f[k] === (v === '1') ? 'pri' : ''}" style="flex:1;justify-content:center;min-height:52px" data-act="abSel" data-k="${k}" data-v="${v}">${l}</button>`).join('')}</div></div>`;
+    const lista = f.linhas.map(l => `${esc(l.nome)} × ${String(l.qt).replace('.', ',')}`).join(' · ');
+    openSheet(`<div class="sh"><h2>Máquina ${esc(m.numero)} · abastecida</h2><button class="ib" data-act="close" aria-label="Fechar">${ic('x')}</button></div><div class="sb">
+      ${temCofre(m) ? sn('cofre', 'Levantou o cofre?') : ''}
+      ${f.linhas.length ? sn('guia', 'Emitir a guia de transporte (GT) no XD com o que meteu na máquina?', `${lista} <span style="opacity:.8">(unidades do XD; a guia certificada não se pode apagar)</span>`) : '<p class="note">Os produtos não têm código do XD, por isso não há guia a emitir.</p>'}
+      <p class="note" id="ab-msg" style="margin:0"></p></div>
+      <div class="sf"><span class="grow"></span><button class="btn pri" type="button" data-act="abFimOk" ${f.cofre === null || f.guia === null ? 'disabled' : ''}>Concluir</button></div>`);
+  }
   async function registaCofre(m) {
     const r = await insertRows('maq_cofre', [{ maquina: m.id }]);
     if (!r) return false;
@@ -460,11 +471,34 @@ window.MAQ_INIT = function () {
       const cont = parseInt(c.cont); if (c.maq && isFinite(cont) && cont >= 0) await insertRows('maq_leituras', [{ maquina: c.maq, contador: cont, data: TODAY() }]);
       const n = rows.length; closeSheet(); toast(c.modo === 'abastecimento' ? `Abastecimento registado (${n} produto${n === 1 ? '' : 's'})` : 'Registado');
       S.maqCart = null;
-      /* depois de abastecer uma máquina com cofre, perguntar se levantou o cofre */
+      /* depois de abastecer: no mesmo ecrã, cofre sim/não e guia (GT) sim/não com o que entrou na máquina */
       const mq = c.modo === 'abastecimento' && c.maq ? M(c.maq) : null;
-      if (mq && temCofre(mq)) setTimeout(() => openSheet(`<div class="sh"><h2>Máquina ${esc(mq.numero)}</h2><button class="ib" data-act="close" aria-label="Fechar">${ic('x')}</button></div><div class="sb">
-        <p style="margin:0 0 16px;font-size:18px">Levantou o cofre?</p>
-        <div style="display:flex;gap:10px"><button class="btn pri" style="flex:1;justify-content:center;min-height:52px" data-act="maqCofreSim" data-id="${mq.id}">Sim</button><button class="btn" style="flex:1;justify-content:center;min-height:52px" data-act="close">Não</button></div></div>`), 350);
+      if (mq) {
+        const linhas = [];
+        rows.forEach(r => { const a = art(r.artigo); if (!a || !a.ref || !(+r.qt > 0)) return; linhas.push({ ref: a.ref, nome: a.nomeMaq || a.nome, qt: Math.round(+r.qt / unCx(a) * 1000) / 1000, iva: String(a.iva ?? '23') }); });
+        S.abFim = { maq: mq.id, cofre: temCofre(mq) ? null : false, guia: linhas.length ? null : false, linhas, chave: 'ab-' + TODAY() + '-' + Math.random().toString(36).slice(2, 10) };
+        setTimeout(abFimSheet, 350);
+      }
+    },
+    abSel: d => { const f = S.abFim; if (!f) return; f[d.k] = d.v === '1'; abFimSheet(); },
+    abFimOk: async (d, b) => {
+      const f = S.abFim; if (!f) return; const m = M(f.maq); if (!m || !canAct()) return;
+      if (f.cofre === null || f.guia === null) return toast('Responda às duas perguntas.');
+      b.disabled = true; const msg = $('#ab-msg');
+      if (f.cofre && !f.cofreFeito) { b.textContent = 'A registar o cofre…'; if (await registaCofre(m)) f.cofreFeito = true; }
+      if (f.guia && !f.guiaFeita) {
+        b.textContent = 'A emitir a guia…';
+        try {
+          const r = await callSoba({ acao: 'gt_carga', chave: f.chave, linhas: f.linhas });
+          const j = await r.json().catch(() => ({}));
+          if (!r.ok || !j.ok) { if (msg) msg.innerHTML = `<span style="color:var(--bad)">A guia não foi emitida: ${esc(j.error || 'erro ' + r.status)}</span>`; b.disabled = false; b.textContent = 'Tentar outra vez'; return; }
+          f.guiaFeita = j.guia?.identificador || 'Guia';
+        } catch (_) { if (msg) msg.textContent = 'Sem ligação. Tente outra vez.'; b.disabled = false; b.textContent = 'Tentar outra vez'; return; }
+      }
+      closeSheet(); S.abFim = null;
+      toast([f.cofreFeito ? 'Cofre registado' : '', f.guiaFeita ? `${f.guiaFeita} emitida no XD` : ''].filter(Boolean).join(' · ') || 'Abastecimento concluído');
+      if (f.guiaFeita) loadGuias().catch(() => {});
+      render();
     },
     maqCofreSim: async (d, b) => { const m = M(d.id); if (!m || !canAct()) return; b.disabled = true; b.textContent = 'A registar…'; closeSheet(); await registaCofre(m); render(); },
     maqTroco: d => {
