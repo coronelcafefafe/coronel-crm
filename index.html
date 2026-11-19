@@ -1174,6 +1174,12 @@ function histH(){const eid=($('#f-entidade')?.value)||S.form?.ent0||'';if(!eid)r
  return `<div class="hist"><div class="hist-h">Últimas encomendas de ${esc(entName(eid))}</div>${L.length?L.map(x=>`<div class="hist-i"><div class="hist-t"><b>${fDY(x.data)}</b><span class="note">${esc(x.estado||'Nova')} · ${eur(docTotal(x))}</span>${ro?'':`<button type="button" class="btn sm" data-act="repEnc" data-id="${x.id}">Repetir</button>`}</div><ul>${(x.linhas||[]).map(l=>`<li>${esc(l.qt)} × ${esc(l.nome)} <span class="num">${eur(l.preco)}${+l.desc?` (−${esc(l.desc)}%)`:''}</span></li>`).join('')||'<li class="note">Sem artigos</li>'}</ul></div>`).join(''):'<p class="note">Ainda não há encomendas deste cliente no CRM.</p>'}</div>`}
 function redrawHist(){const el=$('#enc-hist');if(el)el.innerHTML=histH()}
 function redrawLinhas(){const el=$('#linhas');if(el)el.innerHTML=linhasH();if(S.form?.col==='encomendas')avisoRota()}
+/* grava já as linhas de uma encomenda/proposta existente (ex.: tocar em "últ. X €"), para não se faturar o preço antigo por esquecimento.
+   Não grava se houver linhas de higiene novas (essas são separadas ao Guardar) nem se a encomenda já estiver faturada. */
+function linhasPendentes(){const fm=S.form;if(!fm?.id||!['encomendas','propostas'].includes(fm.col))return false;const ex=S.data[fm.col]?.get(fm.id);if(!ex)return false;return JSON.stringify(fm.linhas||[])!==JSON.stringify(ex.linhas||[])}
+async function linhasGravar(msg){const fm=S.form;if(!fm?.id||!['encomendas','propostas'].includes(fm.col)||!S.canWrite)return false;const ex=S.data[fm.col]?.get(fm.id);if(!ex||ex.faturaXd)return false;
+ if(ex.fornecedor!==OXI&&(fm.linhas||[]).some(isHig))return false;if(!linhasPendentes())return true;
+ const ok=await patch(fm.col,fm.id,{linhas:clone(fm.linhas||[])});if(ok&&msg)toast(msg);return ok}
 function addLinha(a){const u=a?ultPrecos(formEnt()).get(a.id):null;S.form.linhas.push(a?{artigo:a.id,nome:a.fornecedor===OXI?a.nome+(a.unidade?' · '+a.unidade:''):a.nome+(a.ref?' ('+a.ref+')':''),qt:1,preco:u?u.p:(+a.preco||0),desc:0,iva:String(a.iva??'23'),...(a.fornecedor===OXI?{forn:OXI}:{})}:{nome:'',qt:1,preco:0,desc:0,iva:'23'});redrawLinhas();const ins=document.querySelectorAll('.ln-n');const last=ins[ins.length-1];if(last&&!a)last.focus()}
 
 /* --- pickers --- */
@@ -1282,7 +1288,8 @@ const ACT={
  higCat:d=>{S.higCat=d.c||'';redrawLinhas()},
  cafeFam:d=>{S.cafeFam=d.c;S.cafeQ='';S.cafeLim=48;redrawLinhas()},
  cafeMais:()=>{S.cafeLim=(S.cafeLim||48)+48;const cl=$('#cafe-list');if(cl)cl.innerHTML=cafeListH()},
- ftEmitir:(d)=>{const x=S.data.encomendas.get(d.id);if(!x)return;const e=ent(x.entidade)||{};
+ ftEmitir:async(d)=>{if(S.form?.col==='encomendas'&&S.form.id===d.id&&linhasPendentes()){if(!(await linhasGravar('Alterações das linhas guardadas'))){toast('Tem alterações na encomenda por guardar: carregue em Guardar e depois em Faturar.');return}}
+  const x=S.data.encomendas.get(d.id);if(!x)return;const e=ent(x.entidade)||{};
   if(!e.semNif&&!e.codigoXd){toast('O cliente não tem n.º do XD: crie-o primeiro no XD.');return}
   const R=ftItens(x);if(!R.length){toast('A encomenda não tem linhas para faturar.');return}
   const mail=ftMail(x),falta=R.filter(r=>r.fat<r.qt).length;S.ft={id:x.id,R};
@@ -1345,7 +1352,7 @@ const ACT={
  caixaBaixa:async(d,b)=>{if(!S.isAdmin)return;const ids=d.id==='todos'?caixaPim().map(x=>x.id):[d.id];if(!ids.length)return;if(!b.dataset.armed){b.dataset.armed=1;b.textContent='Confirmar';return}
   const{error}=await S.db.from('pagamentos').update({caixa_baixa:new Date().toISOString(),caixa_baixa_por:S.uid}).in('id',ids);if(error){toast('Não foi possível dar baixa.');return}
   ids.forEach(i=>{const p=S.data.pagamentos.get(i);if(p)p.caixaBaixa=new Date().toISOString()});toast(ids.length>1?'Caixa do Pimenta entregue':'Recebido do Pimenta');render()},
- lnUlt:d=>{const l=S.form?.linhas?.[+d.i];if(!l)return;const u=ultPrecos(formEnt()).get(l.artigo);if(!u)return;l.preco=u.p;redrawLinhas()},
+ lnUlt:async d=>{const l=S.form?.linhas?.[+d.i];if(!l)return;const u=ultPrecos(formEnt()).get(l.artigo);if(!u)return;l.preco=u.p;redrawLinhas();await linhasGravar('Preço guardado na encomenda')},
  cafeAdd:d=>{const a=S.data.artigos.get(d.id);if(!a||!S.form)return;semSalto('cafeAdd',a.id,()=>{const l=S.form.linhas.find(x=>x.artigo===a.id);if(l){l.qt=(+l.qt||0)+1;redrawLinhas()}else addLinha(a)})},
  comMes:d=>{S.f.comMes=d.c;render()},
  comReg:async d=>{const k=d.c,c=(S.comissoes||[]).find(c=>String(c.mes).slice(0,7)===k&&c.fornecedor===OXI);const v=prompt(`Comissão comunicada pela Oxigénio para ${mesNome(k)} (€)`,c?.comunicado!=null?String(c.comunicado).replace('.',','):'');if(v===null)return;
