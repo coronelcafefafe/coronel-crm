@@ -737,7 +737,10 @@ VIEWS.inicio=()=>loadingOr(()=>{
  const dlt=vpm?Math.round((vm-vpm)/vpm*100):null;
  let out=`${roBanner()}<div class="hello"><div class="eyebrow">${new Date().toLocaleDateString('pt-PT',{weekday:'long',day:'numeric',month:'long'})}</div><h1>${sal}${S.me?.name?', '+esc(S.me.name.split(' ')[0]):''}</h1></div>`;
  const kpiCli=`<button class="kpi" data-act="go" data-v="clientes"><span class="eyebrow">Clientes ativos</span><span class="v">${cli}</span><span class="s">${lds} negócio${lds===1?'':'s'} em andamento</span></button>`;
- const kpis=temXd?`<div class="kpis">
+ /* enquanto os documentos do XD não chegam, não mostrar os números antigos (só encomendas do CRM): evita o salto 2878 → 5127 ao abrir */
+ const xdAcarregar=!temXd&&!S.ready.xd_documentos;
+ const kpiEsp=t=>`<div class="kpi"><span class="eyebrow">${t}</span><span class="v" style="opacity:.35">…</span><span class="s">a carregar do XD</span></div>`;
+ const kpis=xdAcarregar?`<div class="kpis">${kpiEsp('Vendas de hoje')}${kpiEsp('Vendas do mês')}${kpiEsp('Por receber')}${kpiCli}</div>`:temXd?`<div class="kpis">
   <div class="kpi"><span class="eyebrow">Vendas de hoje</span><span class="v">${eur(vHoje)}</span><span class="s">${xvHoje.length} documento${xvHoje.length===1?'':'s'} no XD · sem IVA</span></div>
   <div class="kpi"><span class="eyebrow">Vendas do mês</span><span class="v">${eur(vMes)}</span><span class="s">${dltX===null?'faturado no XD · sem IVA':`<span class="${dltX>=0?'up':'dn'}">${dltX>=0?'+':''}${dltX}%</span> vs. mesmo dia do mês anterior`}</span></div>
   <button class="kpi ${pendTot>0.005?'hl':''}" data-act="go" data-v="pendentes"><span class="eyebrow">Por receber</span><span class="v">${eur(pendTot)}</span><span class="s">pendentes no XD · ${pendCli} cliente${pendCli===1?'':'s'}</span></button>
@@ -1582,8 +1585,8 @@ async function start(session){
  S.me={name:m.nome||session.user.email,email:m.email,avatarUrl:avatarFor(m.nome||session.user.email)};
  S.view='inicio';S.hist=[];render();
  await loadTeam();
+ const xdP=loadTable('xd_documentos').catch(e=>{console.warn('xd',e);S.ready.xd_documentos=true;schedule()}); /* em paralelo: os números do Início vêm daqui */
  await Promise.all(COLS.map(c=>loadTable(c).catch(e=>{console.warn(c,e);S.ready[c]=true})));
- loadTable('xd_documentos').catch(e=>console.warn('xd',e));
  loadTable('entrega_locais').catch(e=>console.warn('locais',e));
  loadCom().catch(e=>console.warn('comissoes',e));
  S.db.channel('crm').on('postgres_changes',{event:'*',schema:'public'},p=>{const col=p.table;if(col==='membros'){loadTeam();return}if(!S.data[col])return;if(p.eventType==='DELETE'){if(p.old?.id)S.data[col].delete(p.old.id)}else{const o=fromRow(p.new);if(SEL[col]){delete o.custo;const q=S.data[col].get(o.id);if(q)o.custo=q.custo}S.data[col].set(o.id,o)}schedule()}).subscribe();
