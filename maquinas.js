@@ -342,6 +342,7 @@ window.MAQ_INIT = function () {
     inicial: ['Stock inicial', 'Guardar stock inicial', 'stock'],
     entrada: ['Entrada no armazém', 'Guardar entrada', 'stock'],
     acerto: ['Acerto de stock', 'Guardar acerto', 'stock'],
+    carga: ['Guia da carga', 'Emitir guia no XD', 'maquinas'],
   };
   /* cofre: só registo de levantamento (o dinheiro é contado na empresa) */
   const temCofre = m => !!(m && m.entidade && m.tipo !== 'cafe' && m.estado !== 'armazem');
@@ -395,18 +396,19 @@ window.MAQ_INIT = function () {
   function cartBody() {
     const c = S.maqCart, L = cartItems();
     const n = Object.values(c.items).filter(v => v).length, un = Object.values(c.items).reduce((s, v) => s + (+v || 0), 0);
-    const cst = Object.entries(c.items).reduce((s, [id, q]) => s + ((MAQ_MODOS.includes(c.modo) ? custoUn : custoArt)(art(id)) || 0) * (+q || 0), 0);
+    const cst = Object.entries(c.items).reduce((s, [id, q]) => s + ((MAQ_MODOS.includes(c.modo) || c.modo === 'carga' ? custoUn : custoArt)(art(id)) || 0) * (+q || 0), 0);
     return `<label class="srch" style="margin-bottom:10px">${ic('search', 18)}<input id="mq-q" data-mqq="1" type="search" placeholder="Procurar produto" value="${esc(c.q)}" autocomplete="off"></label>
     <div class="mq-grid">${L.map(a => { const q = +c.items[a.id] || 0; return `<div class="mq-it ${q ? 'on' : ''}">
       <div data-act="mqAdd" data-id="${a.id}" data-c="1"><div class="ph-img">${a.foto ? `<img src="${esc(fotoUrl(a.foto))}" alt="" loading="lazy">` : esc(initials(nmA(a)))}</div><div class="nm">${esc(nmA(a))}${c.modo === 'peca' && a.ref ? `<small style="display:block;color:var(--ink-3)">${esc(a.ref)}${a.grupoPeca ? ' · ' + esc(a.grupoPeca) : ''}</small>` : ''}</div></div>
       ${q ? `<span class="mq-q ${q < 0 ? 'neg' : ''}" data-act="mqSet" data-id="${a.id}">${qTxt(q)}${passoArt(a) < 1 && !meiaManga(a) ? ' kg' : ''}</span><div class="mq-pm"><button data-act="mqAdd" data-id="${a.id}" data-c="-1" aria-label="Menos">−</button><button data-act="mqAdd" data-id="${a.id}" data-c="1" aria-label="Mais">+</button></div>` : ''}</div>` }).join('') || '<p class="note">Nenhum produto. Procure pelo nome ou marque os artigos "Aparece no abastecimento" no catálogo.</p>'}</div>
     ${c.maq && !semCont(c.maq) && (c.modo === 'abastecimento' || c.modo === 'retirada') ? `<div class="fld" style="margin-top:12px;max-width:260px"><label for="mq-cont">Contador de serviços (opcional)</label><input id="mq-cont" type="number" inputmode="numeric" min="0" class="inp" value="${esc(c.cont || '')}" data-mqc="1" placeholder="${contadorAtual(c.maq) ? 'último: ' + nF(contadorAtual(c.maq).c) : 'Ex.: 14000'}"></div>` : ''}
+    ${c.modo === 'carga' ? '<p class="note" id="gc-msg" style="margin:10px 0 0"></p>' : ''}
     <div class="mq-bar"><span class="note"><b>${n}</b> produto${n === 1 ? '' : 's'} · <b>${qTxt(un)}</b> un.${S.verValores && cst ? ` · custo ${eur(cst)}` : ''}</span><span class="grow"></span><button class="btn" data-act="close">Cancelar</button><button class="btn pri" data-act="mqOk" ${n ? '' : 'disabled'}>${MODOS[c.modo][1]}</button></div>`;
   }
   function cartOpen(modo, maq, assist) {
     S.maqCart = { modo, maq: maq || null, assist: assist || null, items: {}, q: '' };
     const m = maq ? M(maq) : null;
-    openSheet(`<div class="sh"><h2>${MODOS[modo][0]}${m ? ' ' + esc(m.numero) : ''}</h2><button class="ib" data-act="close" aria-label="Fechar">${ic('x')}</button></div><div class="sb"><p class="note" style="margin:0 0 10px">${modo === 'acerto' ? 'Toque para somar e use − para tirar (pode ficar negativo).' : 'Toque no produto para somar uma unidade (café, chocolate, açúcar e leite ao quilo: 0,5 kg; copos de 160 cc: meia manga). Toque no número para escrever a quantidade.'}</p><div id="mq-cart">${cartBody()}</div></div>`);
+    openSheet(`<div class="sh"><h2>${MODOS[modo][0]}${m ? ' ' + esc(m.numero) : ''}${modo === 'carga' ? ' · ' + fD(TODAY()) : ''}</h2><button class="ib" data-act="close" aria-label="Fechar">${ic('x')}</button></div><div class="sb">${modo === 'carga' ? `<p class="note" style="margin:0 0 10px">Guia GLOBAL: tudo o que vai na carrinha, como num abastecimento. ${S.gc && S.gc.n ? `Já vem com o que as ${S.gc.n} máquinas de hoje levaram da última vez: acerte com + e −.` : ''}</p>` : ''}<p class="note" style="margin:0 0 10px">${modo === 'acerto' ? 'Toque para somar e use − para tirar (pode ficar negativo).' : 'Toque no produto para somar uma unidade (café, chocolate, açúcar e leite ao quilo: 0,5 kg; copos de 160 cc: meia manga). Toque no número para escrever a quantidade.'}</p><div id="mq-cart">${cartBody()}</div></div>`);
   }
   const cartRedraw = () => { const el = document.getElementById('mq-cart'); if (!el) return; const f = document.activeElement?.id === 'mq-q'; const pos = f ? document.activeElement.selectionStart : null; el.innerHTML = cartBody(); if (f) { const i = document.getElementById('mq-q'); i.focus(); try { i.setSelectionRange(pos, pos) } catch (_) { } } };
   document.addEventListener('input', e => { if (e.target.dataset && e.target.dataset.mqq && S.maqCart) { S.maqCart.q = e.target.value; cartRedraw(); } if (e.target.dataset && e.target.dataset.mqc && S.maqCart) S.maqCart.cont = e.target.value; });
@@ -465,6 +467,7 @@ window.MAQ_INIT = function () {
     mqSet: d => { const c = S.maqCart; if (!c) return; const v = prompt('Quantidade', String(c.items[d.id] || '')); if (v === null) return; const n = parseFloat(String(v).replace(',', '.')); if (!isFinite(n) || (!n)) delete c.items[d.id]; else c.items[d.id] = c.modo === 'acerto' ? n : Math.abs(n); cartRedraw(); },
     mqOk: async (d, b) => {
       const c = S.maqCart; if (!c) return;
+      if (c.modo === 'carga') return gcEmitirCarrinho(b);
       const rows = Object.entries(c.items).filter(([, q]) => +q).map(([id, q]) => ({ tipo: c.modo, artigo: id, qt: +q, custo: (MAQ_MODOS.includes(c.modo) ? custoUn : custoArt)(art(id)), maquina: c.maq, assist: c.assist, data: TODAY() }));
       b.disabled = true; const ok = await insertRows('stock_mov', rows); b.disabled = false;
       if (!ok) return;
@@ -662,7 +665,7 @@ window.MAQ_INIT = function () {
     const L = [];
     tot.forEach((q, id) => { const a = S.data.artigos.get(id); if (!a || !a.ref) return; L.push({ artigo: id, ref: a.ref, nome: a.nomeMaq || a.nome, qt: Math.max(1, Math.ceil(q / unCx(a) - 1e-9)), iva: String(a.iva ?? '23') }); });
     L.sort((a, b) => a.nome.localeCompare(b.nome, 'pt'));
-    return { L, n: hoje.length };
+    return { L, n: hoje.length, un: tot };
   }
   const gcLinhasH = () => (S.gc.L.length ? S.gc.L.map((l, i) => `<div class="row" style="cursor:default"><span class="rt"><span class="r1">${esc(l.nome)}</span><span class="r2">${esc(l.ref)}</span></span><span class="rr" style="display:flex;gap:6px;align-items:center"><input class="inp" style="width:80px;text-align:right" type="number" inputmode="decimal" step="1" min="0" data-gcq="${i}" value="${esc(l.qt)}" aria-label="Quantidade"><button type="button" class="ib" data-act="gcDel" data-i="${i}" aria-label="Tirar">${ic('x', 16)}</button></span></div>`).join('') : '<div class="empty"><b>Sem artigos</b>Junte os artigos que vão na carrinha.</div>');
   const gcSync = () => { document.querySelectorAll('[data-gcq]').forEach(el => { const l = S.gc?.L[+el.dataset.gcq]; if (l) l.qt = +el.value || 0; }); };
@@ -675,9 +678,24 @@ window.MAQ_INIT = function () {
       <p class="note" id="gc-msg" style="margin:10px 0 0"></p></div>
       <div class="sf"><button class="btn" data-act="close" type="button">Cancelar</button><span class="grow"></span><button class="btn gold" type="button" data-act="gcEmitir" id="gc-b">Emitir guia no XD</button></div>`);
   };
+  /* guia da carga a partir do carrinho (igual ao abastecimento): unidades da máquina -> unidades do XD, como na guia de cada máquina */
+  async function gcEmitirCarrinho(b) {
+    const c = S.maqCart; if (!c || !S.gc) return; const msg = $('#gc-msg');
+    const L = []; Object.entries(c.items).forEach(([id, q]) => { const a = art(id); if (!a || !a.ref || !(+q > 0)) return; L.push({ ref: a.ref, nome: a.nomeMaq || a.nome, qt: Math.round(+q / unCx(a) * 1000) / 1000, iva: String(a.iva ?? '23') }); });
+    const sem = Object.keys(c.items).filter(id => +c.items[id] > 0 && !art(id)?.ref).map(id => nmA(art(id)));
+    if (!L.length) { if (msg) msg.textContent = 'A guia não tem artigos.'; return; }
+    if (!confirm(`Emitir no XD a guia de transporte global com ${L.length} artigo${L.length === 1 ? '' : 's'}?${sem.length ? `\n\nSem código do XD (ficam de fora): ${sem.join(', ')}` : ''}\n\nUm documento certificado não se pode apagar.`)) return;
+    b.disabled = true; const t0 = b.textContent; b.textContent = 'A emitir…'; if (msg) msg.textContent = '';
+    try {
+      const r = await callSoba({ acao: 'gt_carga', chave: S.gc.chave, linhas: L });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.ok) { if (msg) msg.innerHTML = `<span style="color:var(--bad)">Não foi emitida: ${esc(j.error || 'erro ' + r.status)}</span>`; b.disabled = false; b.textContent = 'Tentar outra vez'; await loadGuias(); return; }
+      await loadGuias(); closeSheet(); S.maqCart = null; toast(`Guia global ${j.guia?.identificador || ''} emitida no XD`); render();
+    } catch (e) { if (msg) msg.textContent = 'Sem ligação. Tente outra vez.'; b.disabled = false; b.textContent = t0; }
+  }
   const callSoba = async body => { const r = await fetch(CFG.url + '/functions/v1/xd-soba', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + ((await S.db.auth.getSession()).data.session?.access_token || ''), apikey: CFG.anonKey }, body: JSON.stringify(body) }); return r; };
   Object.assign(ACT, {
-    gcAbrir: () => { const sg = sugereCarga(); S.gc = { L: sg.L, n: sg.n, chave: 'gt-' + TODAY() + '-' + Math.random().toString(36).slice(2, 10) }; gcSheet(); },
+    gcAbrir: () => { const sg = sugereCarga(); S.gc = { L: sg.L, n: sg.n, chave: 'gt-' + TODAY() + '-' + Math.random().toString(36).slice(2, 10) }; cartOpen('carga'); sg.un.forEach((q, id) => { S.maqCart.items[id] = Math.round(q * 100) / 100; }); cartRedraw(); },
     gcDel: d => { gcSync(); S.gc.L.splice(+d.i, 1); $('#gc-l').innerHTML = gcLinhasH(); },
     gcAdd: () => { gcSync(); const id = $('#gc-add')?.value; const a = id && S.data.artigos.get(id); if (!a) return; const l = S.gc.L.find(x => x.artigo === id); if (l) l.qt = (+l.qt || 0) + 1; else S.gc.L.push({ artigo: id, ref: a.ref, nome: a.nomeMaq || a.nome, qt: 1, iva: String(a.iva ?? '23') }); $('#gc-l').innerHTML = gcLinhasH(); $('#gc-add').value = ''; },
     gcEmitir: async () => {
