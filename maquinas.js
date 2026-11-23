@@ -63,6 +63,8 @@ window.MAQ_INIT = function () {
 .mq-q.neg{background:#b3261e}
 .mq-pm{display:flex;border-top:1px solid var(--line)}.mq-pm button{flex:1;border:0;background:none;padding:8px 0;font-size:18px;cursor:pointer;color:var(--ink)}
 .mq-pm button+button{border-left:1px solid var(--line)}
+.mq-pm .mq-ret{font-size:13px;color:#b3261e;padding:6px 0}
+.mq-it.on:has(.mq-q.neg){border-color:#b3261e;box-shadow:0 0 0 1px #b3261e}
 .mq-bar{position:sticky;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:10px 0 0;margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .mq-bar .note{flex:1 1 100%}@media(min-width:560px){.mq-bar .note{flex:1 1 auto}}
 .mq-sw{display:flex;gap:6px;margin:0 0 10px}.mq-tl .row{cursor:default}.mq-tl .row[role=button]{cursor:pointer}.mq-tl .row[data-act=maqMovVer] .r1::after,.mq-tl .row[data-act=maqAssistVer] .r1::after{content:' ›';color:var(--ink-3)}
@@ -351,10 +353,13 @@ window.MAQ_INIT = function () {
   function abFimSheet() {
     const f = S.abFim; if (!f) return; const m = M(f.maq); if (!m) return;
     const sn = (k, t, sub) => `<div style="margin:0 0 16px"><p style="margin:0 0 8px;font-size:17px">${t}</p>${sub ? `<p class="note" style="margin:-4px 0 8px">${sub}</p>` : ''}<div style="display:flex;gap:10px">${[['1', 'Sim'], ['0', 'Não']].map(([v, l]) => `<button type="button" class="btn ${f[k] === (v === '1') ? 'pri' : ''}" style="flex:1;justify-content:center;min-height:52px" data-act="abSel" data-k="${k}" data-v="${v}">${l}</button>`).join('')}</div></div>`;
-    const lista = f.linhas.map(l => `${esc(l.nome)} × ${String(l.qt).replace('.', ',')}`).join(' · ');
-    openSheet(`<div class="sh"><h2>Máquina ${esc(m.numero)} · abastecida</h2><button class="ib" data-act="close" aria-label="Fechar">${ic('x')}</button></div><div class="sb">
-      ${temCofre(m) ? sn('cofre', 'Levantou o cofre?') : ''}
-      ${f.linhas.length ? sn('guia', 'Emitir a guia desta máquina no XD?', `Guia a Consumidor Final, descarga no local da máquina, com a referência da guia global de hoje. ${lista} <span style="opacity:.8">(unidades do XD; a guia certificada não se pode apagar)</span>${S.guias && !S.guias.some(g => g.tipo === 'GTG' && g.dia === TODAY() && g.estado === 'emitida' && String(g.chave).startsWith('gt-')) ? '<br><b style="color:var(--bad)">Ainda não há guia global de hoje: emita-a primeiro na Rota (Guia da carga).</b>' : ''}`) : '<p class="note">Os produtos não têm código do XD, por isso não há guia a emitir.</p>'}
+    const lt = L => L.map(l => `${esc(l.nome)} × ${String(l.qt).replace('.', ',')}`).join(' · ');
+    const dev = f.dev || [], semGlobal = f.linhas.length && S.guias && !S.guias.some(g => g.tipo === 'GTG' && g.dia === TODAY() && g.estado === 'emitida' && String(g.chave).startsWith('gt-'));
+    const pg = f.linhas.length && dev.length ? 'Emitir as 2 guias desta máquina no XD?' : dev.length ? 'Emitir a guia de devolução no XD?' : 'Emitir a guia desta máquina no XD?';
+    const sub = [f.linhas.length ? `<b>Abastecimento</b> (carrinha → máquina, com a referência da guia global de hoje): ${lt(f.linhas)}` : '', dev.length ? `<b style="color:#b3261e">Devolução</b> (máquina → armazém, produto retirado): ${lt(dev)}` : ''].filter(Boolean).join('<br>') + ` <span style="opacity:.8">(unidades do XD; guias a Consumidor Final; uma guia certificada não se pode apagar)</span>${semGlobal ? '<br><b style="color:var(--bad)">Ainda não há guia global de hoje: emita-a primeiro na Rota (Guia da carga).</b>' : ''}`;
+    openSheet(`<div class="sh"><h2>Máquina ${esc(m.numero)} · ${f.modo === 'retirada' ? 'produto retirado' : 'abastecida'}</h2><button class="ib" data-act="close" aria-label="Fechar">${ic('x')}</button></div><div class="sb">
+      ${f.modo !== 'retirada' && temCofre(m) ? sn('cofre', 'Levantou o cofre?') : ''}
+      ${f.linhas.length || dev.length ? sn('guia', pg, sub) : '<p class="note">Os produtos não têm código do XD, por isso não há guia a emitir.</p>'}
       <p class="note" id="ab-msg" style="margin:0"></p></div>
       <div class="sf"><span class="grow"></span><button class="btn pri" type="button" data-act="abFimOk" ${f.cofre === null || f.guia === null ? 'disabled' : ''}>Concluir</button></div>`);
   }
@@ -400,15 +405,15 @@ window.MAQ_INIT = function () {
     return `<label class="srch" style="margin-bottom:10px">${ic('search', 18)}<input id="mq-q" data-mqq="1" type="search" placeholder="Procurar produto" value="${esc(c.q)}" autocomplete="off"></label>
     <div class="mq-grid">${L.map(a => { const q = +c.items[a.id] || 0; return `<div class="mq-it ${q ? 'on' : ''}">
       <div data-act="mqAdd" data-id="${a.id}" data-c="1"><div class="ph-img">${a.foto ? `<img src="${esc(fotoUrl(a.foto))}" alt="" loading="lazy">` : esc(initials(nmA(a)))}</div><div class="nm">${esc(nmA(a))}${c.modo === 'peca' && a.ref ? `<small style="display:block;color:var(--ink-3)">${esc(a.ref)}${a.grupoPeca ? ' · ' + esc(a.grupoPeca) : ''}</small>` : ''}</div></div>
-      ${q ? `<span class="mq-q ${q < 0 ? 'neg' : ''}" data-act="mqSet" data-id="${a.id}">${qTxt(q)}${passoArt(a) < 1 && !meiaManga(a) ? ' kg' : ''}</span><div class="mq-pm"><button data-act="mqAdd" data-id="${a.id}" data-c="-1" aria-label="Menos">−</button><button data-act="mqAdd" data-id="${a.id}" data-c="1" aria-label="Mais">+</button></div>` : ''}</div>` }).join('') || '<p class="note">Nenhum produto. Procure pelo nome ou marque os artigos "Aparece no abastecimento" no catálogo.</p>'}</div>
+      ${q ? `<span class="mq-q ${q < 0 ? 'neg' : ''}" data-act="mqSet" data-id="${a.id}">${qTxt(q)}${passoArt(a) < 1 && !meiaManga(a) ? ' kg' : ''}</span><div class="mq-pm"><button data-act="mqAdd" data-id="${a.id}" data-c="-1" aria-label="Menos">−</button><button data-act="mqAdd" data-id="${a.id}" data-c="1" aria-label="Mais">+</button></div>` : c.modo === 'abastecimento' ? `<div class="mq-pm"><button class="mq-ret" data-act="mqAdd" data-id="${a.id}" data-c="-1" aria-label="Retirar da máquina">− retirar</button></div>` : ''}</div>` }).join('') || '<p class="note">Nenhum produto. Procure pelo nome ou marque os artigos "Aparece no abastecimento" no catálogo.</p>'}</div>
     ${c.maq && !semCont(c.maq) && (c.modo === 'abastecimento' || c.modo === 'retirada') ? `<div class="fld" style="margin-top:12px;max-width:260px"><label for="mq-cont">Contador de serviços (opcional)</label><input id="mq-cont" type="number" inputmode="numeric" min="0" class="inp" value="${esc(c.cont || '')}" data-mqc="1" placeholder="${contadorAtual(c.maq) ? 'último: ' + nF(contadorAtual(c.maq).c) : 'Ex.: 14000'}"></div>` : ''}
     ${c.modo === 'carga' ? '<p class="note" id="gc-msg" style="margin:10px 0 0"></p>' : ''}
-    <div class="mq-bar"><span class="note"><b>${n}</b> produto${n === 1 ? '' : 's'} · <b>${qTxt(un)}</b> un.${S.verValores && cst ? ` · custo ${eur(cst)}` : ''}</span><span class="grow"></span><button class="btn" data-act="close">Cancelar</button><button class="btn pri" data-act="mqOk" ${n ? '' : 'disabled'}>${MODOS[c.modo][1]}</button></div>`;
+    <div class="mq-bar"><span class="note">${c.modo === 'abastecimento' && Object.values(c.items).some(v => +v < 0) ? (() => { const p = Object.values(c.items).filter(v => +v > 0), r = Object.values(c.items).filter(v => +v < 0); return `Pôr <b>${p.length}</b> · <b style="color:#b3261e">Retirar ${r.length}</b> produto${r.length === 1 ? '' : 's'}`; })() : `<b>${n}</b> produto${n === 1 ? '' : 's'} · <b>${qTxt(un)}</b> un.${S.verValores && cst ? ` · custo ${eur(cst)}` : ''}`}</span><span class="grow"></span><button class="btn" data-act="close">Cancelar</button><button class="btn pri" data-act="mqOk" ${n ? '' : 'disabled'}>${MODOS[c.modo][1]}</button></div>`;
   }
   function cartOpen(modo, maq, assist) {
     S.maqCart = { modo, maq: maq || null, assist: assist || null, items: {}, q: '' };
     const m = maq ? M(maq) : null;
-    openSheet(`<div class="sh"><h2>${MODOS[modo][0]}${m ? ' ' + esc(m.numero) : ''}${modo === 'carga' ? ' · ' + fD(TODAY()) : ''}</h2><button class="ib" data-act="close" aria-label="Fechar">${ic('x')}</button></div><div class="sb">${modo === 'carga' ? `<p class="note" style="margin:0 0 10px">Guia GLOBAL: tudo o que vai na carrinha, como num abastecimento. ${S.gc && S.gc.n ? `Já vem com o que as ${S.gc.n} máquinas de hoje levaram da última vez: acerte com + e −.` : ''}</p>` : ''}<p class="note" style="margin:0 0 10px">${modo === 'acerto' ? 'Toque para somar e use − para tirar (pode ficar negativo).' : 'Toque no produto para somar uma unidade (café, chocolate, açúcar e leite ao quilo: 0,5 kg; copos de 160 cc: meia manga). Toque no número para escrever a quantidade.'}</p><div id="mq-cart">${cartBody()}</div></div>`);
+    openSheet(`<div class="sh"><h2>${MODOS[modo][0]}${m ? ' ' + esc(m.numero) : ''}${modo === 'carga' ? ' · ' + fD(TODAY()) : ''}</h2><button class="ib" data-act="close" aria-label="Fechar">${ic('x')}</button></div><div class="sb">${modo === 'carga' ? `<p class="note" style="margin:0 0 10px">Guia GLOBAL: tudo o que vai na carrinha, como num abastecimento. ${S.gc && S.gc.n ? `Já vem com o que as ${S.gc.n} máquinas de hoje levaram da última vez: acerte com + e −.` : ''}</p>` : ''}<p class="note" style="margin:0 0 10px">${modo === 'acerto' ? 'Toque para somar e use − para tirar (pode ficar negativo).' : 'Toque no produto para somar uma unidade (café, chocolate, açúcar e leite ao quilo: 0,5 kg; copos de 160 cc: meia manga). Toque no número para escrever a quantidade.'}${modo === 'abastecimento' ? ' <b>Para retirar produto da máquina, use «− retirar»: fica a vermelho e sai na guia de devolução.</b>' : ''}</p><div id="mq-cart">${cartBody()}</div></div>`);
   }
   const cartRedraw = () => { const el = document.getElementById('mq-cart'); if (!el) return; const f = document.activeElement?.id === 'mq-q'; const pos = f ? document.activeElement.selectionStart : null; el.innerHTML = cartBody(); if (f) { const i = document.getElementById('mq-q'); i.focus(); try { i.setSelectionRange(pos, pos) } catch (_) { } } };
   document.addEventListener('input', e => { if (e.target.dataset && e.target.dataset.mqq && S.maqCart) { S.maqCart.q = e.target.value; cartRedraw(); } if (e.target.dataset && e.target.dataset.mqc && S.maqCart) S.maqCart.cont = e.target.value; });
@@ -463,23 +468,26 @@ window.MAQ_INIT = function () {
       const ok = await patch('maq_assist', d.id, { avaria: $('#av-avaria')?.value.trim() || null, solucao: $('#av-sol')?.value.trim() || null, ...(c ? { contador: v } : {}) });
       if (ok) { toast('Assistência guardada'); closeSheet(); }
     },
-    mqAdd: d => { const c = S.maqCart; if (!c) return; let v = Math.round(((+c.items[d.id] || 0) + (+d.c) * passoArt(art(d.id))) * 100) / 100; if (v < 0 && c.modo !== 'acerto') v = 0; if (v) c.items[d.id] = v; else delete c.items[d.id]; cartRedraw(); },
-    mqSet: d => { const c = S.maqCart; if (!c) return; const v = prompt('Quantidade', String(c.items[d.id] || '')); if (v === null) return; const n = parseFloat(String(v).replace(',', '.')); if (!isFinite(n) || (!n)) delete c.items[d.id]; else c.items[d.id] = c.modo === 'acerto' ? n : Math.abs(n); cartRedraw(); },
+    mqAdd: d => { const c = S.maqCart; if (!c) return; let v = Math.round(((+c.items[d.id] || 0) + (+d.c) * passoArt(art(d.id))) * 100) / 100; if (v < 0 && c.modo !== 'acerto' && c.modo !== 'abastecimento') v = 0; if (v) c.items[d.id] = v; else delete c.items[d.id]; cartRedraw(); },
+    mqSet: d => { const c = S.maqCart; if (!c) return; const v = prompt('Quantidade', String(c.items[d.id] || '')); if (v === null) return; const n = parseFloat(String(v).replace(',', '.')); if (!isFinite(n) || (!n)) delete c.items[d.id]; else c.items[d.id] = c.modo === 'acerto' || c.modo === 'abastecimento' ? n : Math.abs(n); cartRedraw(); },
     mqOk: async (d, b) => {
       const c = S.maqCart; if (!c) return;
       if (c.modo === 'carga') return gcEmitirCarrinho(b);
-      const rows = Object.entries(c.items).filter(([, q]) => +q).map(([id, q]) => ({ tipo: c.modo, artigo: id, qt: +q, custo: (MAQ_MODOS.includes(c.modo) ? custoUn : custoArt)(art(id)), maquina: c.maq, assist: c.assist, data: TODAY() }));
+      /* no abastecimento, quantidades negativas são produto RETIRADO da máquina (registado como retirada) */
+      const rows = Object.entries(c.items).filter(([, q]) => +q).map(([id, q]) => { const ret = c.modo === 'abastecimento' && +q < 0; return { tipo: ret ? 'retirada' : c.modo, artigo: id, qt: ret ? -q : +q, custo: (MAQ_MODOS.includes(c.modo) ? custoUn : custoArt)(art(id)), maquina: c.maq, assist: c.assist, data: TODAY() }; });
       b.disabled = true; const ok = await insertRows('stock_mov', rows); b.disabled = false;
       if (!ok) return;
       const cont = parseInt(c.cont); if (c.maq && isFinite(cont) && cont >= 0) await insertRows('maq_leituras', [{ maquina: c.maq, contador: cont, data: TODAY() }]);
-      const n = rows.length; closeSheet(); toast(c.modo === 'abastecimento' ? `Abastecimento registado (${n} produto${n === 1 ? '' : 's'})` : 'Registado');
+      const nP = rows.filter(r => r.tipo !== 'retirada').length, nR = c.modo === 'abastecimento' ? rows.length - nP : 0; closeSheet();
+      toast(c.modo === 'abastecimento' ? `Abastecimento registado (${nP} produto${nP === 1 ? '' : 's'})${nR ? ` · ${nR} retirado${nR === 1 ? '' : 's'}` : ''}` : 'Registado');
       S.maqCart = null;
-      /* depois de abastecer: no mesmo ecrã, cofre sim/não e guia (GT) sim/não com o que entrou na máquina */
-      const mq = c.modo === 'abastecimento' && c.maq ? M(c.maq) : null;
+      /* depois de abastecer (ou de retirar): no mesmo ecrã, cofre sim/não e guias sim/não.
+         Guia de abastecimento (carrinha → máquina) com o que entrou; guia de devolução (máquina → armazém) com o que foi retirado. */
+      const mq = (c.modo === 'abastecimento' || c.modo === 'retirada') && c.maq ? M(c.maq) : null;
       if (mq) {
-        const linhas = [];
-        rows.forEach(r => { const a = art(r.artigo); if (!a || !a.ref || !(+r.qt > 0)) return; linhas.push({ ref: a.ref, nome: a.nomeMaq || a.nome, qt: Math.round(+r.qt / unCx(a) * 1000) / 1000, iva: String(a.iva ?? '23') }); });
-        S.abFim = { maq: mq.id, cofre: temCofre(mq) ? null : false, guia: linhas.length ? null : false, linhas, chave: 'ab-' + TODAY() + '-' + Math.random().toString(36).slice(2, 10) };
+        const linhas = [], dev = [];
+        rows.forEach(r => { const a = art(r.artigo); if (!a || !a.ref || !(+r.qt > 0)) return; (r.tipo === 'retirada' ? dev : linhas).push({ ref: a.ref, nome: a.nomeMaq || a.nome, qt: Math.round(+r.qt / unCx(a) * 1000) / 1000, iva: String(a.iva ?? '23') }); });
+        S.abFim = { maq: mq.id, modo: c.modo, cofre: c.modo === 'abastecimento' && temCofre(mq) ? null : false, guia: linhas.length || dev.length ? null : false, linhas, dev, chave: 'ab-' + TODAY() + '-' + Math.random().toString(36).slice(2, 10) };
         setTimeout(abFimSheet, 350);
         if (linhas.length) loadGuias().then(() => { if (S.abFim && S.abFim.maq === mq.id && !S.abFim.guiaFeita) abFimSheet(); }).catch(() => {});
       }
@@ -490,7 +498,7 @@ window.MAQ_INIT = function () {
       if (f.cofre === null || f.guia === null) return toast('Responda às duas perguntas.');
       b.disabled = true; const msg = $('#ab-msg');
       if (f.cofre && !f.cofreFeito) { b.textContent = 'A registar o cofre…'; if (await registaCofre(m)) f.cofreFeito = true; }
-      if (f.guia && !f.guiaFeita) {
+      if (f.guia && f.linhas.length && !f.guiaFeita) {
         b.textContent = 'A emitir a guia…';
         try {
           const r = await callSoba({ acao: 'gt_maquina', chave: f.chave, maquina: f.maq, linhas: f.linhas });
@@ -499,9 +507,19 @@ window.MAQ_INIT = function () {
           f.guiaFeita = j.guia?.identificador || 'Guia';
         } catch (_) { if (msg) msg.textContent = 'Sem ligação. Tente outra vez.'; b.disabled = false; b.textContent = 'Tentar outra vez'; return; }
       }
+      /* guia de devolução (produto retirado): máquina → armazém, na função xd-devolucao */
+      if (f.guia && (f.dev || []).length && !f.devFeita) {
+        b.textContent = 'A emitir a guia de devolução…';
+        try {
+          const r = await fetch(CFG.url + '/functions/v1/xd-devolucao', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + ((await S.db.auth.getSession()).data.session?.access_token || ''), apikey: CFG.anonKey }, body: JSON.stringify({ chave: f.chave + '-dv', maquina: f.maq, linhas: f.dev }) });
+          const j = await r.json().catch(() => ({}));
+          if (!r.ok || !j.ok) { if (msg) msg.innerHTML = `${f.guiaFeita ? `${esc(f.guiaFeita)} emitida. ` : ''}<span style="color:var(--bad)">A guia de devolução não foi emitida: ${esc(j.error || 'erro ' + r.status)}</span>`; b.disabled = false; b.textContent = 'Tentar outra vez'; return; }
+          f.devFeita = j.guia?.identificador || 'Guia de devolução';
+        } catch (_) { if (msg) msg.textContent = 'Sem ligação. Tente outra vez.'; b.disabled = false; b.textContent = 'Tentar outra vez'; return; }
+      }
       closeSheet(); S.abFim = null;
-      toast([f.cofreFeito ? 'Cofre registado' : '', f.guiaFeita ? `${f.guiaFeita} emitida no XD` : ''].filter(Boolean).join(' · ') || 'Abastecimento concluído');
-      if (f.guiaFeita) loadGuias().catch(() => {});
+      toast([f.cofreFeito ? 'Cofre registado' : '', f.guiaFeita ? `${f.guiaFeita} emitida` : '', f.devFeita ? `${f.devFeita} (devolução) emitida` : ''].filter(Boolean).join(' · ') || (f.modo === 'retirada' ? 'Retirada concluída' : 'Abastecimento concluído'));
+      if (f.guiaFeita || f.devFeita) loadGuias().catch(() => {});
       render();
     },
     maqTroco: d => {
@@ -655,7 +673,7 @@ window.MAQ_INIT = function () {
 
   /* ---------- Guias de transporte: de manhã a guia GLOBAL (GTG) com a carga; em cada máquina uma GT ao cliente que a referencia ---------- */
   async function loadGuias() { const { data } = await S.db.from('xd_guias').select('*').gte('dia', addD(TODAY(), -7)).order('criado', { ascending: false }); S.guias = data || []; }
-  const guiasHoje = () => (S.guias || []).filter(g => g.dia === TODAY() && g.estado === 'emitida' && (g.tipo === 'GTG' || g.tipo === 'GT' || g.tipo === 'GTM'));
+  const guiasHoje = () => (S.guias || []).filter(g => g.dia === TODAY() && g.estado === 'emitida' && (g.tipo === 'GTG' || g.tipo === 'GT' || g.tipo === 'GTM' || g.tipo === 'GTD'));
   /* sugestão da carga: para cada máquina a abastecer hoje, o que levou no último abastecimento (em unidades do XD) */
   function sugereCarga() {
     const ativas = D('maquinas').filter(m => m.entidade && m.estado !== 'armazem' && m.estado !== 'abate');
@@ -719,7 +737,7 @@ window.MAQ_INIT = function () {
     if (!S.guias) { if (!S._gL) { S._gL = 1; loadGuias().then(() => { if (S.view === 'rota') render(); }).catch(() => {}); } return ''; }
     const G = guiasHoje().sort((a, b) => (a.tipo === 'GTG' ? 0 : 1) - (b.tipo === 'GTG' ? 0 : 1)), temG = G.some(g => g.tipo === 'GTG');
     return `<div class="panel" style="margin-bottom:14px"><div class="ph"><h2>Guia da carga</h2><span class="grow"></span><button class="btn sm ${G.length ? '' : 'gold'}" data-act="gcAbrir">${temG ? 'Nova guia global' : 'Emitir guia da carga'}</button></div>
-      ${G.length ? G.map(g => `<div class="row" role="button" data-act="gcPdf" data-id="${g.id}"><span class="av k">${ic('doc', 16)}</span><span class="rt"><span class="r1">${esc(g.identificador || 'Guia de transporte')}${g.tipo === 'GTG' ? ' · global' : g.tipo === 'GTM' ? ' · máquina' : ''}</span><span class="r2">${esc([g.atcud ? 'ATCUD ' + g.atcud : '', (g.linhas || []).length + ' artigos', new Date(g.criado).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })].filter(Boolean).join(' · '))}</span></span><span class="rr">${badge('PDF', 'mute')}</span></div>`).join('') : '<p class="note" style="margin:0 16px 12px">Antes de sair, emita a guia global com o que vai na carrinha. Em cada máquina, a guia da máquina é emitida no fim do abastecimento. Ficam aqui para mostrar à GNR.</p>'}</div>`;
+      ${G.length ? G.map(g => `<div class="row" role="button" data-act="gcPdf" data-id="${g.id}"><span class="av k">${ic('doc', 16)}</span><span class="rt"><span class="r1">${esc(g.identificador || 'Guia de transporte')}${g.tipo === 'GTG' ? ' · global' : g.tipo === 'GTM' ? ' · máquina' : g.tipo === 'GTD' ? ' · devolução' : ''}</span><span class="r2">${esc([g.atcud ? 'ATCUD ' + g.atcud : '', (g.linhas || []).length + ' artigos', new Date(g.criado).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })].filter(Boolean).join(' · '))}</span></span><span class="rr">${badge('PDF', 'mute')}</span></div>`).join('') : '<p class="note" style="margin:0 16px 12px">Antes de sair, emita a guia global com o que vai na carrinha. Em cada máquina, a guia da máquina é emitida no fim do abastecimento. Ficam aqui para mostrar à GNR.</p>'}</div>`;
   };
   VIEWS.rota = () => loadingOr(() => {
     const chips = ['Hoje', 'Amanhã', 'Próximos 7 dias'], c = S.f.rota ?? chips[0];
