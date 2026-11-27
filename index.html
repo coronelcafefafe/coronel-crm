@@ -921,7 +921,7 @@ async function fotosCompraColab(files){
  for(let i=0;i<files.length&&i<20;i++){const b=await fotoComprimir(files[i]);const path=`${pasta}/${Date.now()}-${i}.jpg`;const{error}=await S.db.storage.from('documentos').upload(path,b,{contentType:'image/jpeg',upsert:false});if(error){toast('Não foi possível guardar a foto: '+error.message);return}novas.push(path)}
  const{error}=await S.db.rpc('compra_foto',{p_fotos:novas});
  toast(error?'Não foi possível registar a fatura: '+error.message:`Fatura enviada (${novas.length} foto${novas.length===1?'':'s'})`)}
-async function fotoComprimir(file){try{const bm=await createImageBitmap(file);const k=Math.min(1,2200/Math.max(bm.width,bm.height));const c=document.createElement('canvas');c.width=Math.round(bm.width*k);c.height=Math.round(bm.height*k);c.getContext('2d').drawImage(bm,0,0,c.width,c.height);return await new Promise(r=>c.toBlob(b=>r(b||file),'image/jpeg',0.82))}catch(_){return file}}
+async function fotoComprimir(file){try{const bm=await createImageBitmap(file);const k=Math.min(1,1800/Math.max(bm.width,bm.height));const c=document.createElement('canvas');c.width=Math.round(bm.width*k);c.height=Math.round(bm.height*k);c.getContext('2d').drawImage(bm,0,0,c.width,c.height);return await new Promise(r=>c.toBlob(b=>r(b||file),'image/jpeg',0.7))}catch(_){return file}}
 async function fotosCompra(files,id){
  if(!files?.length)return;toast('A guardar a fatura…');
  let c=id?S.data.compras.get(id):null;
