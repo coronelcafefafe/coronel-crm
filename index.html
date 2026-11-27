@@ -759,7 +759,7 @@ VIEWS.inicio=()=>loadingOr(()=>{
    ${!hoje.length&&!atr.length?'<div class="empty"><b>Nada agendado para hoje.</b>Crie uma tarefa ou marque uma visita.</div>':''}</div>
   <div class="panel"><div class="ph"><h2>Precisa de atenção</h2></div>${att.length?att.map(a=>`<div class="row" role="button" tabindex="0" data-act="${a.act}" data-v="${a.v||''}" data-c="${esc(a.c||'')}" data-id="${a.id||''}" data-col="${a.col||''}"><span class="rt"><span class="r1">${esc(a.t)}</span><span class="r2">${esc(a.s)}</span></span><span class="rr">${badge(a.b,a.tone)}</span></div>`).join(''):'<div class="empty"><b>Está tudo em dia</b>Sem avenças vencidas, pedidos abertos ou recibos por emitir.</div>'}</div></div>`;
  out+=colabH();
- if(!S.verValores)return `<div class="pg">${out}</div>`;
+ if(!S.verValores)return `<div class="pg">${fotoCompraColabH()}${out}</div>`;
  // gráfico
  const months=[];for(let i=11;i>=0;i--){const k=addMonths(t.slice(0,8)+'01',-i).slice(0,7);months.push([k,temXd?XV.filter(d=>d.data.startsWith(k)).reduce((s,d)=>s+xdLiq(d),0):enc.filter(e=>(e.data||'').startsWith(k)).reduce((s,e)=>s+docTotal(e),0)])}
  const yr=t.slice(0,4),ta={};
@@ -915,6 +915,12 @@ const tarRow=x=>rowH({col:'tarefas',id:x.id,title:x.titulo,cls:x.feito?'done':''
 const compRow=x=>rowH({col:'compras',id:x.id,title:x.fornecedor||'Fatura fotografada',sub:[fD(x.data),x.documento,x.descricao,(x.fotos||[]).length?'📷 '+x.fotos.length:''].filter(Boolean).join(' · '),right:x.valor!=null?eur(x.valor):'—',badges:(x.xdEstado==='por_lancar'?badge('Por lançar no XD','warn'):x.xdEstado==='lancada'?badge('No XD'+(x.xdDoc?' · '+x.xdDoc:''),'ok'):x.xdEstado==='erro'?badge('Erro no XD','bad'):'')+(x.xdEstado==='por_lancar'?'':x.pago?badge('Pago','ok'):badge('Por pagar','warn'))});
 /* faturas de fornecedor fotografadas: ficam "por lançar" até o Gui (assistente de IA, às sextas) as lançar no XD */
 const fotoCompraH=()=>S.canWrite&&S.verValores?`<div class="panel" style="margin-bottom:14px"><div class="ph"><h2>Faturas de fornecedor</h2><span class="note">${D('compras').filter(x=>x.xdEstado==='por_lancar').length} por lançar no XD</span><span class="grow"></span><label class="btn sm gold" style="cursor:pointer">${ic('camera',16)}Fotografar fatura<input type="file" accept="image/*" capture="environment" multiple data-cfoto="novo" style="display:none"></label></div><p class="note" style="margin:0 16px 12px">Tire uma foto por página. A fatura fica "por lançar" e o Gui lança-a no XD à sexta-feira. Pode juntar o fornecedor e o valor depois, se quiser.</p></div>`:'';
+const fotoCompraColabH=()=>S.canWrite&&!S.verValores?`<div class="panel" style="margin-bottom:14px"><div class="ph"><h2>Fatura de fornecedor</h2><span class="grow"></span><label class="btn sm gold" style="cursor:pointer">${ic('camera',16)}Fotografar fatura<input type="file" accept="image/*" capture="environment" multiple data-cfotoc="1" style="display:none"></label></div><p class="note" style="margin:0 16px 12px">Tire uma foto por página (pode escolher várias de uma vez). A fatura segue para o escritório para ser lançada no XD.</p></div>`:'';
+async function fotosCompraColab(files){
+ if(!files?.length)return;toast('A guardar a fatura…');const pasta=`compras/c-${crypto.randomUUID()}`;const novas=[];
+ for(let i=0;i<files.length&&i<20;i++){const b=await fotoComprimir(files[i]);const path=`${pasta}/${Date.now()}-${i}.jpg`;const{error}=await S.db.storage.from('documentos').upload(path,b,{contentType:'image/jpeg',upsert:false});if(error){toast('Não foi possível guardar a foto: '+error.message);return}novas.push(path)}
+ const{error}=await S.db.rpc('compra_foto',{p_fotos:novas});
+ toast(error?'Não foi possível registar a fatura: '+error.message:`Fatura enviada (${novas.length} foto${novas.length===1?'':'s'})`)}
 async function fotoComprimir(file){try{const bm=await createImageBitmap(file);const k=Math.min(1,2200/Math.max(bm.width,bm.height));const c=document.createElement('canvas');c.width=Math.round(bm.width*k);c.height=Math.round(bm.height*k);c.getContext('2d').drawImage(bm,0,0,c.width,c.height);return await new Promise(r=>c.toBlob(b=>r(b||file),'image/jpeg',0.82))}catch(_){return file}}
 async function fotosCompra(files,id){
  if(!files?.length)return;toast('A guardar a fatura…');
@@ -1442,7 +1448,7 @@ document.addEventListener('input',e=>{
  if(t.dataset.li!==undefined&&S.form){const i=+t.dataset.li,f=t.dataset.f,L=S.form.linhas;if(!L[i])return;L[i][f]=['qt','preco','desc'].includes(f)?(t.value===''?0:parseFloat(t.value)):t.value;const lt=$('#lt-'+i);if(lt)lt.textContent=eur(lineBase(L[i]));$('#ln-tot').innerHTML=totH(totais(L));return}
  if(t.id==='chatin'){t.style.height='auto';t.style.height=Math.min(t.scrollHeight,160)+'px'}});
 document.addEventListener('change',async e=>{
- const t=e.target;if(t.dataset.cfoto&&t.files?.length){const fs=[...t.files];t.value='';await fotosCompra(fs,t.dataset.cfoto==='novo'?null:t.dataset.cfoto);return}
+ const t=e.target;if(t.dataset.cfotoc&&t.files?.length){const fs=[...t.files];t.value='';await fotosCompraColab(fs);return}if(t.dataset.cfoto&&t.files?.length){const fs=[...t.files];t.value='';await fotosCompra(fs,t.dataset.cfoto==='novo'?null:t.dataset.cfoto);return}
  if(t.dataset.acesso){const v=t.value;const{error}=await S.db.from('membros').update({papel:v==='total'?'membro':v,acesso_total:v==='total'}).eq('email',t.dataset.acesso);if(error){toast('Não foi possível alterar o acesso.');loadTeam();return}toast('Acesso alterado. A pessoa vê a mudança quando voltar a abrir o CRM.');loadTeam();return}
  if(t.dataset.li!==undefined&&t.tagName==='SELECT'&&S.form){const L=S.form.linhas;L[+t.dataset.li].iva=t.value;$('#ln-tot').innerHTML=totH(totais(L));return}
  if(t.dataset.pdf&&t.files?.[0]){const f=t.files[0];const nm=$('#pdfnome');
